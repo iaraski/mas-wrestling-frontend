@@ -401,7 +401,7 @@ const ApplicationList = () => {
                         )}
                         <Box
                           component='img'
-                          src={`https://api.telegram.org/file/bot${import.meta.env.VITE_BOT_TOKEN}/${selectedAppDetails.passport.photo_url}`}
+                          src={`${import.meta.env.VITE_API_URL}/api/v1/tg-file/${selectedAppDetails.passport.photo_url}`}
                           alt='Фото'
                           onLoad={() => setImageLoaded(true)}
                           sx={{
@@ -423,7 +423,7 @@ const ApplicationList = () => {
                         </Typography>
                         <Box
                           component='img'
-                          src={`https://api.telegram.org/file/bot${import.meta.env.VITE_BOT_TOKEN}/${selectedAppDetails.passport.passport_scan_url}`}
+                          src={`${import.meta.env.VITE_API_URL}/api/v1/tg-file/${selectedAppDetails.passport.passport_scan_url}`}
                           alt='Скан паспорта'
                           sx={{
                             width: '100%',
@@ -435,7 +435,7 @@ const ApplicationList = () => {
                           }}
                           onClick={() =>
                             window.open(
-                              `https://api.telegram.org/file/bot${import.meta.env.VITE_BOT_TOKEN}/${selectedAppDetails.passport.passport_scan_url}`,
+                              `${import.meta.env.VITE_API_URL}/api/v1/tg-file/${selectedAppDetails.passport.passport_scan_url}`,
                               '_blank',
                             )
                           }
@@ -450,7 +450,7 @@ const ApplicationList = () => {
                           sx={{ display: 'none', mt: 1 }}
                         >
                           <a
-                            href={`https://api.telegram.org/file/bot${import.meta.env.VITE_BOT_TOKEN}/${selectedAppDetails.passport.passport_scan_url}`}
+                            href={`${import.meta.env.VITE_API_URL}/api/v1/tg-file/${selectedAppDetails.passport.passport_scan_url}`}
                             target='_blank'
                             rel='noreferrer'
                           >
