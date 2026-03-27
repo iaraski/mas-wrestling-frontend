@@ -59,6 +59,7 @@ type ApplicationStatus = 'pending' | 'approved' | 'rejected' | 'weighed';
 type Application = {
   id: string;
   athlete_name?: string | null;
+  athlete_city?: string | null;
   category_description?: string | null;
   declared_weight?: number | null;
   actual_weight?: number | null;
@@ -353,6 +354,9 @@ const ApplicationList = () => {
                 <Typography>
                   <strong>Тренер:</strong> {selectedAppDetails.coach_name || 'Не указан'}
                 </Typography>
+                <Typography>
+                  <strong>Город/село:</strong> {selectedAppDetails.athlete_city || 'Не указано'}
+                </Typography>
 
                 <Divider sx={{ my: 2 }} />
 
@@ -382,7 +386,7 @@ const ApplicationList = () => {
                       <strong>Разряд:</strong> {selectedAppDetails.passport.rank || 'Нет'}
                     </Typography>
 
-                    {selectedAppDetails.passport.photo_url && (
+                    {selectedAppDetails.passport?.photo_url && (
                       <Box mt={2} mb={2}>
                         <Typography variant='subtitle2' gutterBottom>
                           Фотография:
@@ -395,19 +399,64 @@ const ApplicationList = () => {
                             sx={{ borderRadius: '4px' }}
                           />
                         )}
-                        <img
-                          src={`${import.meta.env.VITE_API_URL}${selectedAppDetails.passport.photo_url}`}
-                          alt='Паспорт'
+                        <Box
+                          component='img'
+                          src={`https://api.telegram.org/file/bot${import.meta.env.VITE_BOT_TOKEN}/${selectedAppDetails.passport.photo_url}`}
+                          alt='Фото'
                           onLoad={() => setImageLoaded(true)}
-                          style={{
-                            display: imageLoaded ? 'block' : 'none',
-                            maxWidth: '100%',
-                            maxHeight: '200px',
+                          sx={{
+                            width: '100%',
+                            maxHeight: '300px',
                             objectFit: 'contain',
+                            display: imageLoaded ? 'block' : 'none',
                             borderRadius: '4px',
-                            border: '1px solid #ccc',
+                            border: '1px solid #eee',
                           }}
                         />
+                      </Box>
+                    )}
+
+                    {selectedAppDetails.passport?.passport_scan_url && (
+                      <Box mt={2} mb={2}>
+                        <Typography variant='subtitle2' gutterBottom>
+                          Скан паспорта:
+                        </Typography>
+                        <Box
+                          component='img'
+                          src={`https://api.telegram.org/file/bot${import.meta.env.VITE_BOT_TOKEN}/${selectedAppDetails.passport.passport_scan_url}`}
+                          alt='Скан паспорта'
+                          sx={{
+                            width: '100%',
+                            maxHeight: '300px',
+                            objectFit: 'contain',
+                            cursor: 'pointer',
+                            border: '1px solid #ccc',
+                            borderRadius: '4px',
+                          }}
+                          onClick={() =>
+                            window.open(
+                              `https://api.telegram.org/file/bot${import.meta.env.VITE_BOT_TOKEN}/${selectedAppDetails.passport.passport_scan_url}`,
+                              '_blank',
+                            )
+                          }
+                          onError={(e: any) => {
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'block';
+                          }}
+                        />
+                        <Typography
+                          variant='body2'
+                          color='textSecondary'
+                          sx={{ display: 'none', mt: 1 }}
+                        >
+                          <a
+                            href={`https://api.telegram.org/file/bot${import.meta.env.VITE_BOT_TOKEN}/${selectedAppDetails.passport.passport_scan_url}`}
+                            target='_blank'
+                            rel='noreferrer'
+                          >
+                            Открыть документ (PDF)
+                          </a>
+                        </Typography>
                       </Box>
                     )}
 
@@ -437,6 +486,49 @@ const ApplicationList = () => {
                         <Typography variant='body2'>Подтвердить</Typography>
                       </Box>
                     </Box>
+                    {selectedAppDetails.passport.passport_scan_url && (
+                      <Box mt={2}>
+                        <Typography variant='body1' gutterBottom>
+                          <strong>Скан паспорта:</strong>
+                        </Typography>
+                        <Box
+                          component='img'
+                          src={`https://api.telegram.org/file/bot${import.meta.env.VITE_BOT_TOKEN}/${selectedAppDetails.passport.passport_scan_url}`}
+                          alt='Скан паспорта'
+                          sx={{
+                            width: '100%',
+                            maxHeight: '400px',
+                            objectFit: 'contain',
+                            cursor: 'pointer',
+                            border: '1px solid #ccc',
+                            borderRadius: '4px',
+                          }}
+                          onClick={() =>
+                            window.open(
+                              `https://api.telegram.org/file/bot${import.meta.env.VITE_BOT_TOKEN}/${selectedAppDetails.passport.passport_scan_url}`,
+                              '_blank',
+                            )
+                          }
+                          onError={(e: any) => {
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'block';
+                          }}
+                        />
+                        <Typography
+                          variant='body2'
+                          color='textSecondary'
+                          sx={{ display: 'none', mt: 1 }}
+                        >
+                          <a
+                            href={`https://api.telegram.org/file/bot${import.meta.env.VITE_BOT_TOKEN}/${selectedAppDetails.passport.passport_scan_url}`}
+                            target='_blank'
+                            rel='noreferrer'
+                          >
+                            Открыть документ / PDF
+                          </a>
+                        </Typography>
+                      </Box>
+                    )}
                   </Box>
                 ) : (
                   <Typography color='text.secondary'>Паспортные данные не заполнены</Typography>
