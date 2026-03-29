@@ -1,7 +1,7 @@
+import { Alert, Box, Button, Container, Paper, Tab, Tabs, TextField } from '@mui/material';
 import { useState } from 'react';
-import { Box, Button, Container, TextField, Paper, Alert, Tab, Tabs } from '@mui/material';
-import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 
 export default function Login() {
   const [tab, setTab] = useState(0);
@@ -34,7 +34,7 @@ export default function Login() {
         navigate('/');
       }
     } else {
-      // Register
+      // Register a new user
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -45,10 +45,9 @@ export default function Login() {
         setLoading(false);
       } else {
         if (data.user) {
-          const { error: dbError } = await supabase.from('users').upsert(
-            { id: data.user.id, email: data.user.email },
-            { onConflict: 'id' },
-          );
+          const { error: dbError } = await supabase
+            .from('users')
+            .upsert({ id: data.user.id, email: data.user.email }, { onConflict: 'id' });
 
           if (dbError) {
             setError(dbError.message);
@@ -62,7 +61,7 @@ export default function Login() {
   };
 
   return (
-    <Container component="main" maxWidth="xs">
+    <Container component='main' maxWidth='xs'>
       <Box
         sx={{
           marginTop: 8,
@@ -72,42 +71,51 @@ export default function Login() {
         }}
       >
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Tabs value={tab} onChange={(_, newValue) => setTab(newValue)} variant="fullWidth" sx={{ mb: 3 }}>
-            <Tab label="Вход" />
-            <Tab label="Регистрация" />
+          <Tabs
+            value={tab}
+            onChange={(_, newValue) => setTab(newValue)}
+            variant='fullWidth'
+            sx={{ mb: 3 }}
+          >
+            <Tab label='Вход' />
+            <Tab label='Регистрация' />
           </Tabs>
-          
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          
-          <Box component="form" onSubmit={handleSubmit} noValidate>
+
+          {error && (
+            <Alert severity='error' sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
+          <Box component='form' onSubmit={handleSubmit} noValidate>
             <TextField
-              margin="normal"
+              margin='normal'
               required
               fullWidth
-              id="email"
-              label="Email"
-              name="email"
-              autoComplete="email"
+              id='email'
+              label='Email'
+              name='email'
+              autoComplete='email'
               autoFocus
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
             <TextField
-              margin="normal"
+              margin='normal'
               required
               fullWidth
-              name="password"
-              label="Пароль"
-              type="password"
-              id="password"
-              autoComplete={tab === 0 ? "current-password" : "new-password"}
+              name='password'
+              label='Пароль'
+              type='password'
+              id='password'
+              autoComplete={tab === 0 ? 'current-password' : 'new-password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
             <Button
-              type="submit"
+              type='submit'
               fullWidth
-              variant="contained"
+              variant='contained'
               sx={{ mt: 3, mb: 2 }}
               disabled={loading}
             >

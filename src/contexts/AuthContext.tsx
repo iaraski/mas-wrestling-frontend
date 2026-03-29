@@ -45,6 +45,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       const me = await resp.json();
+      console.log('Role from /auth/me:', me.role);
       setRole(me.role || 'athlete');
     } catch (err) {
       console.error('Failed to fetch role', err);
