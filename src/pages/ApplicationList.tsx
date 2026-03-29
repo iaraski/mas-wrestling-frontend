@@ -36,6 +36,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { applicationService, competitionService } from '../services/api';
+import { supabase } from '../lib/supabase';
 
 type Gender = 'male' | 'female';
 
