@@ -370,7 +370,7 @@ const CompetitionCreate = () => {
               />
             </Grid>
 
-            <Grid size={{ xs: 12, sm: 6 }}>
+            <Grid item xs={12} sm={6}>
               <Controller
                 name='scale'
                 control={control}
