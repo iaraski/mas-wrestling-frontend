@@ -27,17 +27,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const fetchUserRole = async (userId: string) => {
     try {
       const { data, error } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', userId)
-        .single();
-      
+        .from('user_roles')
+        .select('roles(code)')
+        .eq('user_id', userId);
+
       if (error) {
-        console.error('Error fetching user role:', error);
-        setRole('athlete'); // default fallback
-      } else if (data) {
-        setRole(data.role);
+        console.error('Error fetching user roles:', error);
+        setRole('athlete');
+        return;
       }
+
+      const codes = (data || [])
+        .map((ur: any) => ur?.roles?.code)
+        .filter((c: any) => typeof c === 'string');
+
+      const isAdmin = codes.some((c: string) => c.includes('admin'));
+      const isSecretary = codes.some((c: string) => c.includes('secretary'));
+
+      if (isAdmin) setRole('admin');
+      else if (isSecretary) setRole('secretary');
+      else setRole('athlete');
     } catch (err) {
       console.error('Failed to fetch role', err);
       setRole('athlete');

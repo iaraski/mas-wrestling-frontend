@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, Button, Container, TextField, Typography, Paper, Alert, Tab, Tabs } from '@mui/material';
+import { Box, Button, Container, TextField, Paper, Alert, Tab, Tabs } from '@mui/material';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 
@@ -45,10 +45,16 @@ export default function Login() {
         setLoading(false);
       } else {
         if (data.user) {
-          // Initialize user record with default athlete role
-          await supabase.from('users').insert([
-            { id: data.user.id, email: data.user.email, role: 'athlete' }
-          ]);
+          const { error: dbError } = await supabase.from('users').upsert(
+            { id: data.user.id, email: data.user.email },
+            { onConflict: 'id' },
+          );
+
+          if (dbError) {
+            setError(dbError.message);
+            setLoading(false);
+            return;
+          }
         }
         navigate('/dashboard');
       }
