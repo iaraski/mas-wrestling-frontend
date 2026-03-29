@@ -1,34 +1,57 @@
 import { useState } from 'react';
-import { Box, Button, Container, TextField, Typography, Paper, Alert } from '@mui/material';
+import { Box, Button, Container, TextField, Typography, Paper, Alert, Tab, Tabs } from '@mui/material';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
+  const [tab, setTab] = useState(0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    if (tab === 0) {
+      // Login
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
-      if (error.message === 'Invalid login credentials') {
-        setError('Неправильный логин или пароль');
+      if (error) {
+        if (error.message === 'Invalid login credentials') {
+          setError('Неправильный логин или пароль');
+        } else {
+          setError(error.message);
+        }
+        setLoading(false);
       } else {
-        setError(error.message);
+        navigate('/');
       }
-      setLoading(false);
     } else {
-      navigate('/');
+      // Register
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+      } else {
+        if (data.user) {
+          // Initialize user record with default athlete role
+          await supabase.from('users').insert([
+            { id: data.user.id, email: data.user.email, role: 'athlete' }
+          ]);
+        }
+        navigate('/dashboard');
+      }
     }
   };
 
@@ -43,13 +66,14 @@ export default function Login() {
         }}
       >
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Typography component="h1" variant="h5" align="center" gutterBottom>
-            Авторизация
-          </Typography>
+          <Tabs value={tab} onChange={(_, newValue) => setTab(newValue)} variant="fullWidth" sx={{ mb: 3 }}>
+            <Tab label="Вход" />
+            <Tab label="Регистрация" />
+          </Tabs>
           
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           
-          <Box component="form" onSubmit={handleLogin} noValidate>
+          <Box component="form" onSubmit={handleSubmit} noValidate>
             <TextField
               margin="normal"
               required
@@ -70,7 +94,7 @@ export default function Login() {
               label="Пароль"
               type="password"
               id="password"
-              autoComplete="current-password"
+              autoComplete={tab === 0 ? "current-password" : "new-password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -81,7 +105,7 @@ export default function Login() {
               sx={{ mt: 3, mb: 2 }}
               disabled={loading}
             >
-              {loading ? 'Вход...' : 'Войти'}
+              {loading ? 'Загрузка...' : tab === 0 ? 'Войти' : 'Зарегистрироваться'}
             </Button>
           </Box>
         </Paper>

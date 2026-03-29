@@ -401,7 +401,14 @@ const ApplicationList = () => {
                         )}
                         <Box
                           component='img'
-                          src={`${import.meta.env.VITE_API_URL}/api/v1/tg-file/${selectedAppDetails.passport.photo_url}`}
+                          src={
+                            selectedAppDetails.passport.photo_url.includes('documents/')
+                              ? supabase.storage
+                                  .from('avatars')
+                                  .getPublicUrl(selectedAppDetails.passport.photo_url).data
+                                  .publicUrl
+                              : `${import.meta.env.VITE_API_URL}/api/v1/tg-file/${selectedAppDetails.passport.photo_url}`
+                          }
                           alt='Фото'
                           onLoad={() => setImageLoaded(true)}
                           onError={() => setImageLoaded(true)}
@@ -424,7 +431,14 @@ const ApplicationList = () => {
                         </Typography>
                         <Box
                           component='iframe'
-                          src={`${import.meta.env.VITE_API_URL}/api/v1/tg-file/${selectedAppDetails.passport.passport_scan_url}`}
+                          src={
+                            selectedAppDetails.passport.passport_scan_url.includes('documents/')
+                              ? supabase.storage
+                                  .from('avatars')
+                                  .getPublicUrl(selectedAppDetails.passport.passport_scan_url).data
+                                  .publicUrl
+                              : `${import.meta.env.VITE_API_URL}/api/v1/tg-file/${selectedAppDetails.passport.passport_scan_url}`
+                          }
                           title='Скан паспорта'
                           sx={{
                             width: '100%',
@@ -439,7 +453,12 @@ const ApplicationList = () => {
                             size='small'
                             onClick={() =>
                               window.open(
-                                `${import.meta.env.VITE_API_URL}/api/v1/tg-file/${selectedAppDetails.passport.passport_scan_url}`,
+                                selectedAppDetails.passport.passport_scan_url.includes('documents/')
+                                  ? supabase.storage
+                                      .from('avatars')
+                                      .getPublicUrl(selectedAppDetails.passport.passport_scan_url)
+                                      .data.publicUrl
+                                  : `${import.meta.env.VITE_API_URL}/api/v1/tg-file/${selectedAppDetails.passport.passport_scan_url}`,
                                 '_blank',
                               )
                             }

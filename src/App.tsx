@@ -12,6 +12,7 @@ import CompetitionExecution from './pages/CompetitionExecution';
 import Competitions from './pages/CompetitionList';
 import Login from './pages/Login';
 import UserManagement from './pages/UserManagement';
+import UserDashboard from './pages/UserDashboard';
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ function App() {
 
               <Route element={<ProtectedRoute />}>
                 <Route element={<Layout />}>
+                  {/* Admin Routes */}
                   <Route path='/' element={<Competitions />} />
                   <Route path='/competitions' element={<Competitions />} />
                   <Route path='/competitions/create' element={<CompetitionCreate />} />
@@ -51,6 +53,9 @@ function App() {
                   />
                   <Route path='/brackets/:categoryId' element={<BracketView />} />
                   <Route path='/users' element={<UserManagement />} />
+                  
+                  {/* Athlete Dashboard Route */}
+                  <Route path='/dashboard' element={<UserDashboard />} />
                 </Route>
               </Route>
             </Routes>

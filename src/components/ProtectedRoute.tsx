@@ -1,9 +1,10 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Box, CircularProgress } from '@mui/material';
 
 export default function ProtectedRoute() {
-  const { user, loading } = useAuth();
+  const { user, role, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -15,6 +16,17 @@ export default function ProtectedRoute() {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Redirect athletes away from admin routes
+  const isAdminRoute = !location.pathname.startsWith('/dashboard');
+  if (isAdminRoute && role === 'athlete') {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // Redirect admins away from athlete routes (optional, but good for UX)
+  if (!isAdminRoute && (role === 'admin' || role === 'secretary')) {
+    return <Navigate to="/" replace />;
   }
 
   return <Outlet />;
