@@ -26,30 +26,29 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const fetchUserRole = async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('roles(code)')
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Error fetching user roles:', error);
-        setRole('athlete');
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) {
+        setRole(null);
         return;
       }
 
-      const codes = (data || [])
-        .map((ur: any) => ur?.roles?.code)
-        .filter((c: any) => typeof c === 'string');
+      const resp = await fetch(`${import.meta.env.VITE_API_URL}/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
 
-      const isAdmin = codes.some((c: string) => c.includes('admin'));
-      const isSecretary = codes.some((c: string) => c.includes('secretary'));
+      if (!resp.ok) {
+        setRole(null);
+        return;
+      }
 
-      if (isAdmin) setRole('admin');
-      else if (isSecretary) setRole('secretary');
-      else setRole('athlete');
+      const me = await resp.json();
+      setRole(me.role || 'athlete');
     } catch (err) {
       console.error('Failed to fetch role', err);
-      setRole('athlete');
+      setRole(null);
     }
   };
 

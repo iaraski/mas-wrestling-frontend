@@ -51,7 +51,7 @@ function ProfileTab({ userId }: { userId: string }) {
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ['profile', userId],
     queryFn: async () => {
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/users/me/profile`, { params: { user_id: userId } });
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/users/me/profile`, { params: { user_id: userId } });
       return data;
     },
     retry: false
@@ -60,7 +60,7 @@ function ProfileTab({ userId }: { userId: string }) {
   const { data: athlete } = useQuery({
     queryKey: ['athlete', userId],
     queryFn: async () => {
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/users/me/athlete`, { params: { user_id: userId } });
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/users/me/athlete`, { params: { user_id: userId } });
       return data;
     },
     retry: false
@@ -69,7 +69,7 @@ function ProfileTab({ userId }: { userId: string }) {
   const { data: countries } = useQuery({
     queryKey: ['locations', 'country'],
     queryFn: async () => {
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/locations/?type=country`);
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/locations/?type=country`);
       return data;
     }
   });
@@ -78,7 +78,7 @@ function ProfileTab({ userId }: { userId: string }) {
     queryKey: ['locations', 'district', formData.country_id],
     queryFn: async () => {
       if (!formData.country_id) return [];
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/locations/?type=district&parent_id=${formData.country_id}`);
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/locations/?type=district&parent_id=${formData.country_id}`);
       return data;
     },
     enabled: !!formData.country_id
@@ -88,7 +88,7 @@ function ProfileTab({ userId }: { userId: string }) {
     queryKey: ['locations', 'region', formData.district_id],
     queryFn: async () => {
       if (!formData.district_id) return [];
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/locations/?type=region&parent_id=${formData.district_id}`);
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/locations/?type=region&parent_id=${formData.district_id}`);
       return data;
     },
     enabled: !!formData.district_id
@@ -116,13 +116,13 @@ function ProfileTab({ userId }: { userId: string }) {
 
   const updateProfile = useMutation({
     mutationFn: async (data: typeof formData) => {
-      await axios.put(`${import.meta.env.VITE_API_URL}/api/v1/users/me/profile?user_id=${userId}`, {
+      await axios.put(`${import.meta.env.VITE_API_URL}/users/me/profile?user_id=${userId}`, {
         full_name: data.full_name,
         phone: data.phone,
         city: data.city,
         location_id: data.region_id
       });
-      await axios.put(`${import.meta.env.VITE_API_URL}/api/v1/users/me/athlete?user_id=${userId}&coach_name=${data.coach_name}`);
+      await axios.put(`${import.meta.env.VITE_API_URL}/users/me/athlete?user_id=${userId}&coach_name=${data.coach_name}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile', userId] });
@@ -238,7 +238,7 @@ function PassportTab({ userId }: { userId: string }) {
   const { data: athlete } = useQuery({
     queryKey: ['athlete', userId],
     queryFn: async () => {
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/users/me/athlete`, { params: { user_id: userId } });
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/users/me/athlete`, { params: { user_id: userId } });
       return data;
     },
     retry: false
@@ -263,7 +263,7 @@ function PassportTab({ userId }: { userId: string }) {
 
   const updatePassport = useMutation({
     mutationFn: async (data: typeof formData) => {
-      await axios.put(`${import.meta.env.VITE_API_URL}/api/v1/users/me/passport?user_id=${userId}`, data);
+      await axios.put(`${import.meta.env.VITE_API_URL}/users/me/passport?user_id=${userId}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['athlete', userId] });
@@ -452,7 +452,7 @@ function ApplicationsTab({ userId }: { userId: string }) {
   const { data: applications, isLoading } = useQuery({
     queryKey: ['my_applications', userId],
     queryFn: async () => {
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/users/me/applications`, { params: { user_id: userId } });
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/users/me/applications`, { params: { user_id: userId } });
       return data;
     }
   });
@@ -480,7 +480,7 @@ function CompetitionsTab({ userId }: { userId: string }) {
   const { data: competitions, isLoading } = useQuery({
     queryKey: ['active_competitions'],
     queryFn: async () => {
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/competitions/active`);
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/competitions/active`);
       return data;
     }
   });
@@ -488,7 +488,7 @@ function CompetitionsTab({ userId }: { userId: string }) {
   const { data: athlete } = useQuery({
     queryKey: ['athlete', userId],
     queryFn: async () => {
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/users/me/athlete`, { params: { user_id: userId } });
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/users/me/athlete`, { params: { user_id: userId } });
       return data;
     },
     retry: false
@@ -496,7 +496,7 @@ function CompetitionsTab({ userId }: { userId: string }) {
 
   const applyMutation = useMutation({
     mutationFn: async (categoryId: string) => {
-      await axios.post(`${import.meta.env.VITE_API_URL}/api/v1/applications/me?user_id=${userId}&category_id=${categoryId}`);
+      await axios.post(`${import.meta.env.VITE_API_URL}/applications/me?user_id=${userId}&category_id=${categoryId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my_applications', userId] });

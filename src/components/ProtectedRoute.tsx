@@ -18,6 +18,10 @@ export default function ProtectedRoute() {
     return <Navigate to="/login" replace />;
   }
 
+  if (!role) {
+    return <Outlet />;
+  }
+
   // Redirect athletes away from admin routes
   const isAdminRoute = !location.pathname.startsWith('/dashboard');
   if (isAdminRoute && role === 'athlete') {
