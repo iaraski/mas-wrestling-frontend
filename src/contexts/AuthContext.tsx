@@ -33,7 +33,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
-      const resp = await fetch(`${import.meta.env.VITE_API_URL}/auth/me`, {
+      const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/auth/me`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
