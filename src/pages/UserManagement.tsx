@@ -374,7 +374,7 @@ const UserManagement = () => {
           {dialogMode === 'create' && (
             <Box sx={{ mb: 2 }}>
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 6 }}>
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label='Email'
@@ -382,7 +382,7 @@ const UserManagement = () => {
                     onChange={(e) => setCreateEmail(e.target.value)}
                   />
                 </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     type='password'
@@ -391,7 +391,7 @@ const UserManagement = () => {
                     onChange={(e) => setCreatePassword(e.target.value)}
                   />
                 </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label='ФИО'
@@ -399,7 +399,7 @@ const UserManagement = () => {
                     onChange={(e) => setCreateFullName(e.target.value)}
                   />
                 </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label='Телефон (опционально)'

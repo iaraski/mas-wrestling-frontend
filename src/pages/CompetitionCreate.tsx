@@ -357,7 +357,7 @@ const CompetitionCreate = () => {
 
         <form onSubmit={handleSubmit(onSubmit)}>
           <Grid container spacing={3}>
-            <Grid size={12}>
+            <Grid item xs={12}>
               <TextField
                 fullWidth
                 label='Название'
@@ -395,7 +395,7 @@ const CompetitionCreate = () => {
             </Grid>
 
             {/* Cascading Location Selection */}
-            <Grid size={{ xs: 12, sm: 4 }}>
+            <Grid item xs={12} sm={4}>
               <Autocomplete
                 options={countries || []}
                 getOptionLabel={(option) => option.name}
@@ -410,7 +410,7 @@ const CompetitionCreate = () => {
                 noOptionsText='Нет стран'
               />
             </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            <Grid item xs={12} sm={4}>
               <Autocomplete
                 options={districts || []}
                 getOptionLabel={(option) => option.name}
@@ -425,7 +425,7 @@ const CompetitionCreate = () => {
                 noOptionsText='Нет округов'
               />
             </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            <Grid item xs={12} sm={4}>
               <Autocomplete
                 options={regions || []}
                 getOptionLabel={(option) => option.name}
@@ -448,7 +448,7 @@ const CompetitionCreate = () => {
               />
             </Grid>
 
-            <Grid size={{ xs: 12, sm: 4 }}>
+            <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
                 label='Город'
@@ -456,7 +456,7 @@ const CompetitionCreate = () => {
                 slotProps={{ inputLabel: { shrink: true } }}
               />
             </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
                 label='Улица'
@@ -464,7 +464,7 @@ const CompetitionCreate = () => {
                 slotProps={{ inputLabel: { shrink: true } }}
               />
             </Grid>
-            <Grid size={{ xs: 12, sm: 4 }}>
+            <Grid item xs={12} sm={4}>
               <TextField
                 fullWidth
                 label='Дом'
@@ -473,7 +473,7 @@ const CompetitionCreate = () => {
               />
             </Grid>
 
-            <Grid size={{ xs: 12, sm: 6 }}>
+            <Grid item xs={12} sm={6}>
               <Controller
                 name='type'
                 control={control}
@@ -486,7 +486,7 @@ const CompetitionCreate = () => {
               />
             </Grid>
 
-            <Grid size={{ xs: 12, sm: 3 }}>
+            <Grid item xs={12} sm={3}>
               <TextField
                 fullWidth
                 type='date'
@@ -498,7 +498,7 @@ const CompetitionCreate = () => {
               />
             </Grid>
 
-            <Grid size={{ xs: 12, sm: 3 }}>
+            <Grid item xs={12} sm={3}>
               <TextField
                 fullWidth
                 type='date'
@@ -510,7 +510,7 @@ const CompetitionCreate = () => {
               />
             </Grid>
 
-            <Grid size={{ xs: 12, sm: 3 }}>
+            <Grid item xs={12} sm={3}>
               <TextField
                 fullWidth
                 type='date'
@@ -522,7 +522,7 @@ const CompetitionCreate = () => {
               />
             </Grid>
 
-            <Grid size={{ xs: 12, sm: 3 }}>
+            <Grid item xs={12} sm={3}>
               <TextField
                 fullWidth
                 type='date'
@@ -534,7 +534,7 @@ const CompetitionCreate = () => {
               />
             </Grid>
 
-            <Grid size={{ xs: 12, sm: 3 }}>
+            <Grid item xs={12} sm={3}>
               <Controller
                 name='mats_count'
                 control={control}
@@ -554,7 +554,7 @@ const CompetitionCreate = () => {
               />
             </Grid>
 
-            <Grid size={12}>
+            <Grid item xs={12}>
               <Typography variant='subtitle1' gutterBottom sx={{ mt: 2 }}>
                 Выбор секретарей (
                 {selectedScale === 'country' ? 'из выбранной страны' : 'из выбранного региона'})
@@ -597,7 +597,7 @@ const CompetitionCreate = () => {
               />
             </Grid>
 
-            <Grid size={12}>
+            <Grid item xs={12}>
               <Box display='flex' justifyContent='space-between' alignItems='center' mt={2} mb={1}>
                 <Typography variant='h6'>Возрастные и весовые категории</Typography>
                 <Button
@@ -624,7 +624,7 @@ const CompetitionCreate = () => {
                   sx={{ mb: 2, p: 2, border: '1px dashed #ccc', borderRadius: 1 }}
                 >
                   <Grid container spacing={2} alignItems='flex-start'>
-                    <Grid size={{ xs: 12, sm: 2 }}>
+                    <Grid item xs={12} sm={6}>
                       <Controller
                         name={`category_groups.${index}.gender` as const}
                         control={control}
@@ -636,7 +636,7 @@ const CompetitionCreate = () => {
                         )}
                       />
                     </Grid>
-                    <Grid size={{ xs: 6, sm: 2 }}>
+                    <Grid item xs={6} sm={2}>
                       <TextField
                         fullWidth
                         type='number'
@@ -645,7 +645,7 @@ const CompetitionCreate = () => {
                         {...register(`category_groups.${index}.age_min` as const)}
                       />
                     </Grid>
-                    <Grid size={{ xs: 6, sm: 2 }}>
+                    <Grid item xs={6} sm={2}>
                       <TextField
                         fullWidth
                         type='number'
@@ -655,7 +655,7 @@ const CompetitionCreate = () => {
                       />
                     </Grid>
 
-                    <Grid size={{ xs: 12, sm: 3 }}>
+                    <Grid item xs={12} sm={3}>
                       <TextField
                         fullWidth
                         type='date'
@@ -668,7 +668,7 @@ const CompetitionCreate = () => {
                       />
                     </Grid>
 
-                    <Grid size={{ xs: 12, sm: 3 }}>
+                    <Grid item xs={12} sm={3}>
                       <TextField
                         fullWidth
                         type='date'
@@ -680,13 +680,13 @@ const CompetitionCreate = () => {
                         })}
                       />
                     </Grid>
-                    <Grid size={{ xs: 12, sm: 2 }}>
+                    <Grid item xs={12} sm={2}>
                       <IconButton onClick={() => remove(index)} color='error'>
                         <DeleteIcon />
                       </IconButton>
                     </Grid>
 
-                    <Grid size={{ xs: 12, sm: 12 }} sx={{ mt: 1 }}>
+                    <Grid item xs={12} sm={12} sx={{ mt: 1 }}>
                       <Controller
                         name={`category_groups.${index}.weights` as const}
                         control={control}
@@ -736,7 +736,7 @@ const CompetitionCreate = () => {
               ))}
             </Grid>
 
-            <Grid size={12}>
+            <Grid item xs={12}>
               <Box display='flex' gap={2} justifyContent='flex-end' mt={2}>
                 <Button onClick={() => navigate('/competitions')}>Отмена</Button>
                 <Button

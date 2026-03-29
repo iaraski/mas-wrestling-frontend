@@ -201,7 +201,7 @@ export default function CompetitionExecution() {
 
                     <Grid container spacing={2} alignItems='center'>
                       {/* Red Athlete */}
-                      <Grid size={{ xs: 12, md: 5 }}>
+                      <Grid item xs={12} md={5}>
                         <Paper sx={{ p: 2, bgcolor: '#ffebee', textAlign: 'center' }}>
                           <Typography variant='h6' color='error'>
                             {bout.red_athlete?.athlete_name || 'Ожидание победителя...'}
@@ -234,14 +234,14 @@ export default function CompetitionExecution() {
                         </Paper>
                       </Grid>
 
-                      <Grid size={{ xs: 12, md: 2 }} sx={{ textAlign: 'center' }}>
+                      <Grid item xs={12} md={2} sx={{ textAlign: 'center' }}>
                         <Typography variant='h5' color='textSecondary'>
                           VS
                         </Typography>
                       </Grid>
 
                       {/* Blue Athlete */}
-                      <Grid size={{ xs: 12, md: 5 }}>
+                      <Grid item xs={12} md={5}>
                         <Paper sx={{ p: 2, bgcolor: '#e3f2fd', textAlign: 'center' }}>
                           <Typography variant='h6' color='primary'>
                             {bout.blue_athlete?.athlete_name || 'Ожидание победителя...'}

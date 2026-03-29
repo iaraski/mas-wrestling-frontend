@@ -90,7 +90,7 @@ const CompetitionDetails = () => {
 
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
         <Grid container spacing={2}>
-          <Grid size={{ xs: 12, md: 8 }}>
+          <Grid item xs={12} md={8}>
             <Typography variant='h4' gutterBottom>
               {competition.name}
             </Typography>
@@ -124,7 +124,7 @@ const CompetitionDetails = () => {
             </Box>
           </Grid>
           <Grid
-            size={{ xs: 12, md: 4 }}
+            item xs={12} md={4}
             display='flex'
             flexDirection='column'
             justifyContent='center'

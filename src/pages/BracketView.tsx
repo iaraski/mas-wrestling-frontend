@@ -73,7 +73,7 @@ const BracketView = () => {
 
       <Grid container spacing={2}>
         {bracket?.matches.map((match, index) => (
-          <Grid size={{ xs: 12, sm: 6 }} key={index}>
+          <Grid item xs={12} sm={6} key={index}>
             <Card variant='outlined'>
               <CardContent>
                 <Typography variant='subtitle2' color='text.secondary'>

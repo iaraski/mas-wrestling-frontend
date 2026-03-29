@@ -72,7 +72,7 @@ const CompetitionListPage = () => {
 
       <Grid container spacing={3}>
         {competitions?.map((comp: Competition) => (
-          <Grid size={{ xs: 12, sm: 6, md: 4 }} key={comp.id}>
+          <Grid item xs={12} sm={6} md={4} key={comp.id}>
             <Card>
               <CardContent>
                 <Typography variant='h6' gutterBottom>
