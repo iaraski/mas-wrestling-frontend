@@ -40,16 +40,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       });
 
       if (!resp.ok) {
-        setRole(null);
-        return;
+        throw new Error(`Failed to fetch role: ${resp.statusText}`);
       }
 
       const me = await resp.json();
       console.log('Role from /auth/me:', me.role);
       setRole(me.role || 'athlete');
-    } catch (err) {
-      console.error('Failed to fetch role', err);
-      setRole(null);
+    } catch (e) {
+      console.error('Error fetching role:', e);
+      setRole('athlete');
     }
   };
 

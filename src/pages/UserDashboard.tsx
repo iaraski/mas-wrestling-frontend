@@ -65,10 +65,18 @@ function ProfileTab({ userId }: { userId: string }) {
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ['profile', userId],
     queryFn: async () => {
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/users/me/profile`, {
-        params: { user_id: userId },
-      });
-      return data;
+      try {
+        const { data } = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/v1/users/me/profile`,
+          {
+            params: { user_id: userId },
+          },
+        );
+        return data;
+      } catch (err) {
+        console.error('Failed to load profile', err);
+        return null;
+      }
     },
     retry: false,
   });
@@ -76,10 +84,18 @@ function ProfileTab({ userId }: { userId: string }) {
   const { data: athlete } = useQuery({
     queryKey: ['athlete', userId],
     queryFn: async () => {
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/users/me/athlete`, {
-        params: { user_id: userId },
-      });
-      return data;
+      try {
+        const { data } = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/v1/users/me/athlete`,
+          {
+            params: { user_id: userId },
+          },
+        );
+        return data;
+      } catch (err) {
+        console.error('Failed to load athlete', err);
+        return null;
+      }
     },
     retry: false,
   });
@@ -289,10 +305,18 @@ function PassportTab({ userId }: { userId: string }) {
   const { data: athlete } = useQuery({
     queryKey: ['athlete', userId],
     queryFn: async () => {
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/users/me/athlete`, {
-        params: { user_id: userId },
-      });
-      return data;
+      try {
+        const { data } = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/v1/users/me/athlete`,
+          {
+            params: { user_id: userId },
+          },
+        );
+        return data;
+      } catch (err) {
+        console.error('Failed to load athlete in PassportTab', err);
+        return null;
+      }
     },
     retry: false,
   });
@@ -587,10 +611,18 @@ function CompetitionsTab({ userId }: { userId: string }) {
   const { data: athlete } = useQuery({
     queryKey: ['athlete', userId],
     queryFn: async () => {
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/api/v1/users/me/athlete`, {
-        params: { user_id: userId },
-      });
-      return data;
+      try {
+        const { data } = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/v1/users/me/athlete`,
+          {
+            params: { user_id: userId },
+          },
+        );
+        return data;
+      } catch (err) {
+        console.error('Failed to load athlete in CompetitionsTab', err);
+        return null;
+      }
     },
     retry: false,
   });
