@@ -91,7 +91,6 @@ const ApplicationList = () => {
   const [currentTab, setCurrentTab] = useState<number>(0);
   const [imageLoaded, setImageLoaded] = useState<boolean>(false);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: selectedAppDetails, isLoading: isLoadingDetails } = useQuery<any>({
     queryKey: ['applicationDetails', selectedAppId],
     queryFn: () => applicationService.getApplicationDetails(selectedAppId!),
