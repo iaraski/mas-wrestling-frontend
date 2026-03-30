@@ -133,7 +133,11 @@ export default function Login() {
                   />
                   <span>
                     Согласие на обработку персональных данных{' '}
-                    <a href='https://disk.yandex.ru/i/pH_TKjczEVaCpg' target='_blank' rel='noreferrer'>
+                    <a
+                      href='https://docs.google.com/document/d/1pkV6DiFigJ_jG-zkH_fsXpr-KgGu-2ibxIC9gNvJv-Y/edit?usp=sharing'
+                      target='_blank'
+                      rel='noreferrer'
+                    >
                       (открыть)
                     </a>
                   </span>
