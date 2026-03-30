@@ -33,6 +33,7 @@ type Category = {
 type Competition = {
   id: string;
   name: string;
+  description?: string;
   preview_url?: string;
   scale: string;
   type: string;
@@ -95,6 +96,9 @@ const CompetitionDetails = () => {
             <Typography variant='h4' gutterBottom>
               {competition.name}
             </Typography>
+            {competition.description ? (
+              <Typography sx={{ whiteSpace: 'pre-wrap', mb: 2 }}>{competition.description}</Typography>
+            ) : null}
             <Box display='flex' gap={1} mb={2}>
               <Chip label={competition.scale} color='primary' size='small' />
               <Chip label={competition.type} variant='outlined' size='small' />

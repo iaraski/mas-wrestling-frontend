@@ -44,6 +44,7 @@ type CategoryGroupForm = {
 
 type CompetitionCreateFormValues = {
   name: string;
+  description?: string;
   preview_url?: string;
   scale: 'world' | 'country' | 'region';
   type: 'open' | 'restricted';
@@ -87,6 +88,7 @@ const CompetitionCreate = () => {
   } = useForm<CompetitionCreateFormValues>({
     defaultValues: {
       name: '',
+      description: '',
       preview_url: '',
       scale: 'region',
       type: 'open',
@@ -135,6 +137,7 @@ const CompetitionCreate = () => {
 
       reset({
         name: existingCompetition.name || '',
+        description: existingCompetition.description || '',
         preview_url: existingCompetition.preview_url || '',
         scale: formScale,
         type: existingCompetition.type || 'open',
@@ -367,6 +370,19 @@ const CompetitionCreate = () => {
                 {...register('name', { required: 'Обязательное поле' })}
                 error={!!errors.name}
                 helperText={errors.name?.message}
+                slotProps={{
+                  inputLabel: { shrink: true },
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                multiline
+                minRows={4}
+                label='Описание соревнования'
+                {...register('description')}
                 slotProps={{
                   inputLabel: { shrink: true },
                 }}
