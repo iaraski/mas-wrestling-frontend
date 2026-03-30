@@ -15,6 +15,7 @@ api.interceptors.request.use(async (config) => {
 
 type CompetitionCreatePayload = {
   name: string;
+  preview_url?: string;
   scale: 'world' | 'country' | 'region';
   type: 'open' | 'restricted';
   location_id?: string;

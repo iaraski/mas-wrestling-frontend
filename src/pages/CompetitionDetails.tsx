@@ -33,6 +33,7 @@ type Category = {
 type Competition = {
   id: string;
   name: string;
+  preview_url?: string;
   scale: string;
   type: string;
   start_date: string;
@@ -131,6 +132,14 @@ const CompetitionDetails = () => {
             alignItems='flex-end'
             gap={1}
           >
+            {competition.preview_url ? (
+              <Box
+                component='img'
+                src={competition.preview_url}
+                alt='preview'
+                sx={{ width: '100%', maxWidth: 240, borderRadius: 1, mb: 1 }}
+              />
+            ) : null}
             <Button
               variant='contained'
               fullWidth
