@@ -353,8 +353,7 @@ const CompetitionCreate = () => {
       let previewUploadFailed = false;
       if (previewFile && savedId) {
         try {
-          const { preview_url } = await competitionService.uploadCompetitionPreview(savedId, previewFile);
-          await competitionService.updateCompetition(savedId, { preview_url });
+          await competitionService.uploadCompetitionPreview(savedId, previewFile);
         } catch (e) {
           console.error('[Frontend] Preview upload failed:', e);
           previewUploadFailed = true;
