@@ -61,6 +61,14 @@ export const competitionService = {
     const response = await api.get(`/competitions/${id}`);
     return response.data;
   },
+  uploadCompetitionPreview: async (id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post(`/competitions/${id}/preview`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data as { preview_url: string };
+  },
 };
 
 export const applicationService = {

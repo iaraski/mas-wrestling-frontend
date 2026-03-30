@@ -77,6 +77,7 @@ const CompetitionCreate = () => {
   const { compId } = useParams<{ compId: string }>();
   const isEditMode = !!compId;
   const queryClient = useQueryClient();
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
 
   const {
     register,
@@ -242,13 +243,9 @@ const CompetitionCreate = () => {
       isEditMode
         ? competitionService.updateCompetition(compId!, data)
         : competitionService.createCompetition(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['competitions'] });
-      navigate('/');
-    },
   });
 
-  const onSubmit = (data: CompetitionCreateFormValues) => {
+  const onSubmit = async (data: CompetitionCreateFormValues) => {
     console.log('[Frontend] Form raw data:', data);
 
     const finalCategories: CompetitionCategoryForm[] = [];
@@ -339,7 +336,13 @@ const CompetitionCreate = () => {
       delete formattedData.category_groups;
 
       console.log('[Frontend] Sending formatted data:', formattedData);
-      mutation.mutate(formattedData as any);
+      const saved = await mutation.mutateAsync(formattedData as any);
+      const savedId = isEditMode ? compId! : saved?.id;
+      if (previewFile && savedId) {
+        await competitionService.uploadCompetitionPreview(savedId, previewFile);
+      }
+      queryClient.invalidateQueries({ queryKey: ['competitions'] });
+      navigate('/');
     } catch (err) {
       console.error('[Frontend] Error formatting dates:', err);
       alert('Ошибка в формате дат. Проверьте правильность заполнения.');
@@ -390,14 +393,20 @@ const CompetitionCreate = () => {
             </Grid>
 
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label='Ссылка на превью (картинка)'
-                {...register('preview_url')}
-                slotProps={{
-                  inputLabel: { shrink: true },
-                }}
-              />
+              <Button variant='outlined' component='label' fullWidth>
+                {previewFile ? `Превью: ${previewFile.name}` : 'Загрузить превью (картинка)'}
+                <input
+                  hidden
+                  type='file'
+                  accept='image/*'
+                  onChange={(e) => setPreviewFile(e.target.files?.[0] || null)}
+                />
+              </Button>
+              {isEditMode && existingCompetition?.preview_url ? (
+                <Typography variant='body2' sx={{ mt: 1, wordBreak: 'break-all' }}>
+                  Текущее превью: {existingCompetition.preview_url}
+                </Typography>
+              ) : null}
             </Grid>
 
             <Grid item xs={12} sm={6}>
