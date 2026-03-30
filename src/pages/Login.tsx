@@ -9,6 +9,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [consent, setConsent] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,9 +36,16 @@ export default function Login() {
       }
     } else {
       // Register a new user
+      if (!consent) {
+        setError('Необходимо согласиться на обработку персональных данных');
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
+        options: { emailRedirectTo: `${window.location.origin}/auth/verified` },
       });
 
       if (error) {
@@ -55,7 +63,10 @@ export default function Login() {
             return;
           }
         }
-        navigate('/dashboard');
+        setLoading(false);
+        setError(
+          'Мы отправили письмо для подтверждения email. Перейдите по ссылке из письма, затем войдите на сайт.',
+        );
       }
     }
   };
@@ -112,6 +123,23 @@ export default function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            {tab === 1 && (
+              <Box sx={{ mt: 1 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type='checkbox'
+                    checked={consent}
+                    onChange={(e) => setConsent(e.target.checked)}
+                  />
+                  <span>
+                    Согласие на обработку персональных данных{' '}
+                    <a href='https://disk.yandex.ru/i/pH_TKjczEVaCpg' target='_blank' rel='noreferrer'>
+                      (открыть)
+                    </a>
+                  </span>
+                </label>
+              </Box>
+            )}
             <Button
               type='submit'
               fullWidth

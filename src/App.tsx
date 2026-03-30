@@ -5,14 +5,15 @@ import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import Applications from './pages/ApplicationList';
+import AuthVerified from './pages/AuthVerified';
 import BracketView from './pages/BracketView';
 import CompetitionCreate from './pages/CompetitionCreate';
 import CompetitionDetails from './pages/CompetitionDetails';
 import CompetitionExecution from './pages/CompetitionExecution';
 import Competitions from './pages/CompetitionList';
 import Login from './pages/Login';
-import UserManagement from './pages/UserManagement';
 import UserDashboard from './pages/UserDashboard';
+import UserManagement from './pages/UserManagement';
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ function App() {
           <Router>
             <Routes>
               <Route path='/login' element={<Login />} />
+              <Route path='/auth/verified' element={<AuthVerified />} />
 
               <Route element={<ProtectedRoute />}>
                 <Route element={<Layout />}>
@@ -53,7 +55,7 @@ function App() {
                   />
                   <Route path='/brackets/:categoryId' element={<BracketView />} />
                   <Route path='/users' element={<UserManagement />} />
-                  
+
                   {/* Athlete Dashboard Route */}
                   <Route path='/dashboard' element={<UserDashboard />} />
                 </Route>
