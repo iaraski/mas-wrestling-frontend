@@ -24,19 +24,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUserRole = async () => {
+  const fetchUserRole = async (accessToken: string) => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 7000);
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData.session?.access_token;
-      if (!accessToken) {
-        setRole(null);
-        return;
-      }
-
       const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/auth/me`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
+        signal: controller.signal,
       });
 
       if (!resp.ok) {
@@ -49,32 +45,48 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     } catch (e) {
       console.error('Error fetching role:', e);
       setRole('athlete');
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   };
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchUserRole();
+    const init = async () => {
+      setLoading(true);
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.access_token) {
+          await fetchUserRole(session.access_token);
+        } else {
+          setRole(null);
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    };
+
+    void init();
 
     // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchUserRole();
-      } else {
-        setRole(null);
+      setLoading(true);
+      try {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.access_token) {
+          await fetchUserRole(session.access_token);
+        } else {
+          setRole(null);
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
