@@ -316,9 +316,10 @@ const CompetitionCreate = () => {
       });
     });
 
+    let formattedData: any;
     try {
       // Конвертируем даты в ISO формат для FastAPI
-      const formattedData = {
+      formattedData = {
         ...data,
         categories: finalCategories, // Send flattened categories
         mandate_start_date: data.mandate_start_date
@@ -334,18 +335,39 @@ const CompetitionCreate = () => {
       // Remove temporary field
       // @ts-ignore
       delete formattedData.category_groups;
+      if (!formattedData.preview_url) {
+        delete formattedData.preview_url;
+      }
 
       console.log('[Frontend] Sending formatted data:', formattedData);
-      const saved = await mutation.mutateAsync(formattedData as any);
-      const savedId = isEditMode ? compId! : saved?.id;
-      if (previewFile && savedId) {
-        await competitionService.uploadCompetitionPreview(savedId, previewFile);
-      }
-      queryClient.invalidateQueries({ queryKey: ['competitions'] });
-      navigate('/');
     } catch (err) {
       console.error('[Frontend] Error formatting dates:', err);
       alert('Ошибка в формате дат. Проверьте правильность заполнения.');
+      return;
+    }
+
+    try {
+      const saved = await mutation.mutateAsync(formattedData as any);
+      const savedId = isEditMode ? compId! : saved?.id;
+
+      let previewUploadFailed = false;
+      if (previewFile && savedId) {
+        try {
+          await competitionService.uploadCompetitionPreview(savedId, previewFile);
+        } catch (e) {
+          console.error('[Frontend] Preview upload failed:', e);
+          previewUploadFailed = true;
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['competitions'] });
+      if (previewUploadFailed) {
+        alert('Соревнование сохранено, но превью не загрузилось. Проверьте настройки bucket/ключи.');
+      }
+      navigate('/');
+    } catch (err) {
+      console.error('[Frontend] Save competition failed:', err);
+      alert('Ошибка при сохранении соревнования. Проверьте API и права доступа.');
     }
   };
 
