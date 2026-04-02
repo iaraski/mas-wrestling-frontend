@@ -11,6 +11,7 @@ import CompetitionCreate from './pages/CompetitionCreate';
 import CompetitionDetails from './pages/CompetitionDetails';
 import CompetitionExecution from './pages/CompetitionExecution';
 import Competitions from './pages/CompetitionList';
+import CompetitionLiveExecution from './pages/CompetitionLiveExecution';
 import Login from './pages/Login';
 import UserDashboard from './pages/UserDashboard';
 import UserManagement from './pages/UserManagement';
@@ -53,6 +54,7 @@ function App() {
                     path='/competitions/:compId/execution'
                     element={<CompetitionExecution />}
                   />
+                  <Route path='/competitions/:compId/live' element={<CompetitionLiveExecution />} />
                   <Route path='/brackets/:categoryId' element={<BracketView />} />
                   <Route path='/users' element={<UserManagement />} />
 

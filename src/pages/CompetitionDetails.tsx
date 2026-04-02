@@ -97,7 +97,9 @@ const CompetitionDetails = () => {
               {competition.name}
             </Typography>
             {competition.description ? (
-              <Typography sx={{ whiteSpace: 'pre-wrap', mb: 2 }}>{competition.description}</Typography>
+              <Typography sx={{ whiteSpace: 'pre-wrap', mb: 2 }}>
+                {competition.description}
+              </Typography>
             ) : null}
             <Box display='flex' gap={1} mb={2}>
               <Chip label={competition.scale} color='primary' size='small' />
@@ -129,7 +131,9 @@ const CompetitionDetails = () => {
             </Box>
           </Grid>
           <Grid
-            item xs={12} md={4}
+            item
+            xs={12}
+            md={4}
             display='flex'
             flexDirection='column'
             justifyContent='center'
@@ -160,6 +164,15 @@ const CompetitionDetails = () => {
               onClick={() => navigate(`/competitions/${competition.id}/execution`)}
             >
               Проведение
+            </Button>
+            <Button
+              variant='contained'
+              color='info'
+              fullWidth
+              sx={{ maxWidth: 200 }}
+              onClick={() => navigate(`/competitions/${competition.id}/live`)}
+            >
+              Проведение (Live)
             </Button>
           </Grid>
         </Grid>

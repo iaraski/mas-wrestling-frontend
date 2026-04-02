@@ -18,6 +18,14 @@ export default function ProtectedRoute() {
     return <Navigate to='/login' state={{ from: location }} replace />;
   }
 
+  if (!role) {
+    return (
+      <Box display='flex' justifyContent='center' alignItems='center' minHeight='100vh'>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   console.log('ProtectedRoute role:', role, 'location:', location.pathname);
 
   // If user is athlete and trying to access admin routes, redirect to dashboard

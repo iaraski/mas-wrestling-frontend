@@ -1,5 +1,5 @@
 import type { Session, User } from '@supabase/supabase-js';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
@@ -23,31 +23,51 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const roleFetchInFlight = useRef<Promise<void> | null>(null);
+  const roleFetchToken = useRef<string | null>(null);
 
   const fetchUserRole = async (accessToken: string) => {
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 7000);
-    try {
-      const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/auth/me`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        signal: controller.signal,
-      });
-
-      if (!resp.ok) {
-        throw new Error(`Failed to fetch role: ${resp.statusText}`);
-      }
-
-      const me = await resp.json();
-      console.log('Role from /auth/me:', me.role);
-      setRole(me.role || 'athlete');
-    } catch (e) {
-      console.error('Error fetching role:', e);
-      setRole('athlete');
-    } finally {
-      window.clearTimeout(timeoutId);
+    if (roleFetchInFlight.current && roleFetchToken.current === accessToken) {
+      return roleFetchInFlight.current;
     }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+
+    roleFetchToken.current = accessToken;
+    roleFetchInFlight.current = (async () => {
+      try {
+        const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          signal: controller.signal,
+        });
+
+        if (!resp.ok) {
+          throw new Error(`Failed to fetch role: ${resp.status} ${resp.statusText}`);
+        }
+
+        const me = await resp.json();
+        console.log('Role from /auth/me:', me.role);
+        const resolvedRole = me.role || 'athlete';
+        setRole(resolvedRole);
+        try {
+          localStorage.setItem('last_role', resolvedRole);
+        } catch {}
+      } catch (e) {
+        const name = (e as any)?.name;
+        if (name === 'AbortError') {
+          return;
+        }
+        console.error('Error fetching role:', e);
+      } finally {
+        window.clearTimeout(timeoutId);
+        roleFetchInFlight.current = null;
+        roleFetchToken.current = null;
+      }
+    })();
+
+    return roleFetchInFlight.current;
   };
 
   useEffect(() => {
@@ -60,7 +80,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.access_token) {
-          await fetchUserRole(session.access_token);
+          try {
+            const cached = localStorage.getItem('last_role');
+            if (cached) setRole(cached);
+          } catch {}
+          void fetchUserRole(session.access_token);
         } else {
           setRole(null);
         }
@@ -80,7 +104,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.access_token) {
-          await fetchUserRole(session.access_token);
+          try {
+            const cached = localStorage.getItem('last_role');
+            if (cached) setRole(cached);
+          } catch {}
+          void fetchUserRole(session.access_token);
         } else {
           setRole(null);
         }

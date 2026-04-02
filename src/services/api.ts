@@ -6,7 +6,9 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (session?.access_token) {
     config.headers.Authorization = `Bearer ${session.access_token}`;
   }
@@ -141,6 +143,47 @@ export const locationService = {
     if (type) params.type = type;
     if (parentId) params.parent_id = parentId;
     const response = await api.get('/locations/', { params });
+    return response.data;
+  },
+};
+
+export const liveService = {
+  getLiveState: async (competitionId: string) => {
+    const response = await api.get(`/live/competitions/${competitionId}/state`);
+    return response.data;
+  },
+  generateLiveBouts: async (
+    competitionId: string,
+    forceRegenerate = false,
+    rebalanceAssignments = false,
+  ) => {
+    const response = await api.post(`/live/competitions/${competitionId}/generate`, {
+      force_regenerate: forceRegenerate,
+      rebalance_assignments: rebalanceAssignments,
+    });
+    return response.data;
+  },
+  startBout: async (boutId: string) => {
+    const response = await api.post(`/live/bouts/${boutId}/start`);
+    return response.data;
+  },
+  finishBout: async (boutId: string, winnerAthleteId: string) => {
+    const response = await api.post(`/live/bouts/${boutId}/finish`, {
+      winner_athlete_id: winnerAthleteId,
+    });
+    return response.data;
+  },
+  moveCategory: async (competitionId: string, categoryId: string, toMatNumber: number) => {
+    const response = await api.post(`/live/categories/${categoryId}/move`, {
+      competition_id: competitionId,
+      to_mat_number: toMatNumber,
+    });
+    return response.data;
+  },
+  stopCompetition: async (competitionId: string, clearAssignments = true) => {
+    const response = await api.post(`/live/competitions/${competitionId}/stop`, {
+      clear_assignments: clearAssignments,
+    });
     return response.data;
   },
 };
