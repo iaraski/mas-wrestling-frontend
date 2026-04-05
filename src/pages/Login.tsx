@@ -1,5 +1,5 @@
 import { Alert, Box, Button, Container, Paper, Tab, Tabs, TextField } from '@mui/material';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
@@ -8,19 +8,87 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState<{ severity: 'success' | 'info'; message: string } | null>(
+    null,
+  );
   const [loading, setLoading] = useState(false);
   const [consent, setConsent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [codeSent, setCodeSent] = useState(false);
+  const [cooldownLeft, setCooldownLeft] = useState(0);
   const navigate = useNavigate();
+
+  const formatAuthError = (message: string) => {
+    const m = message.toLowerCase();
+    if (
+      m.includes('email rate limit exceeded') ||
+      (m.includes('rate limit') && m.includes('email'))
+    ) {
+      return 'Превышен лимит отправки писем подтверждения. Подождите и попробуйте позже или используйте другой email. Для продакшена нужно подключить SMTP в Supabase Auth.';
+    }
+    if (m.includes('rate limit') || m.includes('too many requests')) {
+      return 'Слишком много попыток. Подождите и попробуйте позже.';
+    }
+    return message;
+  };
+
+  const handleSendCode = async () => {
+    if (cooldownLeft > 0) return;
+    setLoading(true);
+    setError('');
+    setNotice(null);
+
+    if (!consent) {
+      setError('Необходимо согласиться на обработку персональных данных');
+      setLoading(false);
+      return;
+    }
+
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setError('Введите email.');
+      setLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: cleanEmail,
+      options: { shouldCreateUser: true },
+    });
+
+    if (error) {
+      setError(formatAuthError(error.message));
+      setLoading(false);
+      return;
+    }
+
+    setCodeSent(true);
+    setCooldownLeft(60);
+    setNotice({
+      severity: 'info',
+      message: 'Мы отправили код на email. Введите код и придумайте пароль.',
+    });
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (cooldownLeft <= 0) return;
+    const id = window.setInterval(() => {
+      setCooldownLeft((s) => (s <= 1 ? 0 : s - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [cooldownLeft]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setNotice(null);
 
     if (tab === 0) {
       // Login
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password,
       });
 
@@ -28,46 +96,75 @@ export default function Login() {
         if (error.message === 'Invalid login credentials') {
           setError('Неправильный логин или пароль');
         } else {
-          setError(error.message);
+          setError(formatAuthError(error.message));
         }
         setLoading(false);
       } else {
         navigate('/');
       }
     } else {
-      // Register a new user
+      // Register: email + code + password
       if (!consent) {
         setError('Необходимо согласиться на обработку персональных данных');
         setLoading(false);
         return;
       }
 
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { emailRedirectTo: `${window.location.origin}/auth/verified` },
+      const cleanEmail = email.trim();
+      if (!cleanEmail) {
+        setError('Введите email.');
+        setLoading(false);
+        return;
+      }
+
+      const token = otpCode.trim();
+      if (!token) {
+        setError('Введите код из письма.');
+        setLoading(false);
+        return;
+      }
+
+      const newPassword = password.trim();
+      if (!newPassword) {
+        setError('Придумайте пароль.');
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: cleanEmail,
+        token,
+        type: 'email',
       });
 
       if (error) {
-        setError(error.message);
+        setError(formatAuthError(error.message));
         setLoading(false);
-      } else {
-        if (data.user) {
-          const { error: dbError } = await supabase
-            .from('users')
-            .upsert({ id: data.user.id, email: data.user.email }, { onConflict: 'id' });
-
-          if (dbError) {
-            setError(dbError.message);
-            setLoading(false);
-            return;
-          }
-        }
-        setLoading(false);
-        setError(
-          'Мы отправили письмо для подтверждения email. Перейдите по ссылке из письма, затем войдите на сайт.',
-        );
+        return;
       }
+
+      if (data.session) {
+        const { error: passErr } = await supabase.auth.updateUser({ password: newPassword });
+        if (passErr) {
+          setError(formatAuthError(passErr.message));
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (data.user) {
+        const { error: dbError } = await supabase
+          .from('users')
+          .upsert({ id: data.user.id, email: data.user.email }, { onConflict: 'id' });
+
+        if (dbError) {
+          setError(dbError.message);
+          setLoading(false);
+          return;
+        }
+      }
+
+      navigate('/');
     }
   };
 
@@ -84,7 +181,20 @@ export default function Login() {
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
           <Tabs
             value={tab}
-            onChange={(_, newValue) => setTab(newValue)}
+            onChange={(_, newValue) => {
+              setTab(newValue);
+              setError('');
+              setNotice(null);
+              setLoading(false);
+              if (newValue === 0) {
+                setPassword('');
+              } else {
+                setOtpCode('');
+                setPassword('');
+                setCodeSent(false);
+                setCooldownLeft(0);
+              }
+            }}
             variant='fullWidth'
             sx={{ mb: 3 }}
           >
@@ -95,6 +205,11 @@ export default function Login() {
           {error && (
             <Alert severity='error' sx={{ mb: 2 }}>
               {error}
+            </Alert>
+          )}
+          {notice && (
+            <Alert severity={notice.severity} sx={{ mb: 2 }}>
+              {notice.message}
             </Alert>
           )}
 
@@ -111,18 +226,45 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
-            <TextField
-              margin='normal'
-              required
-              fullWidth
-              name='password'
-              label='Пароль'
-              type='password'
-              id='password'
-              autoComplete={tab === 0 ? 'current-password' : 'new-password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            {tab === 0 ? (
+              <TextField
+                margin='normal'
+                required
+                fullWidth
+                name='password'
+                label='Пароль'
+                type='password'
+                id='password'
+                autoComplete='current-password'
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            ) : null}
+            {tab === 1 ? (
+              <>
+                <TextField
+                  margin='normal'
+                  required
+                  fullWidth
+                  name='otp'
+                  label='Код из письма'
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
+                />
+                <TextField
+                  margin='normal'
+                  required
+                  fullWidth
+                  name='password'
+                  label='Пароль'
+                  type='password'
+                  id='reg-password'
+                  autoComplete='new-password'
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </>
+            ) : null}
             {tab === 1 && (
               <Box sx={{ mt: 1 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -144,15 +286,45 @@ export default function Login() {
                 </label>
               </Box>
             )}
-            <Button
-              type='submit'
-              fullWidth
-              variant='contained'
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
-            >
-              {loading ? 'Загрузка...' : tab === 0 ? 'Войти' : 'Зарегистрироваться'}
-            </Button>
+            {tab === 0 ? (
+              <Button
+                type='submit'
+                fullWidth
+                variant='contained'
+                sx={{ mt: 3, mb: 2 }}
+                disabled={loading}
+              >
+                {loading ? 'Загрузка...' : 'Войти'}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  type='button'
+                  fullWidth
+                  variant='outlined'
+                  sx={{ mt: 3, mb: 1 }}
+                  disabled={loading || cooldownLeft > 0}
+                  onClick={handleSendCode}
+                >
+                  {loading
+                    ? 'Загрузка...'
+                    : cooldownLeft > 0
+                      ? `Отправить код (${cooldownLeft}с)`
+                      : codeSent
+                        ? 'Отправить код ещё раз'
+                        : 'Отправить код'}
+                </Button>
+                <Button
+                  type='submit'
+                  fullWidth
+                  variant='contained'
+                  sx={{ mb: 2 }}
+                  disabled={loading}
+                >
+                  {loading ? 'Загрузка...' : 'Зарегистрироваться'}
+                </Button>
+              </>
+            )}
           </Box>
         </Paper>
       </Box>
