@@ -97,6 +97,7 @@ function ProfileTab({
   });
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [photoSignedUrl, setPhotoSignedUrl] = useState<string | null>(null);
+  const [showValidation, setShowValidation] = useState(false);
 
   const { data: reg } = useQuery({
     queryKey: ['registration', userId],
@@ -238,14 +239,82 @@ function ProfileTab({
     }));
   }, [locationPath]);
 
-  const saveProfile = async (data: typeof formData) => {
+  const validateProfile = (data: typeof formData) => {
+    const errors: Partial<Record<keyof typeof formData, string>> = {};
+
     const fullName = String(data.full_name || '').trim();
+    const fullNameParts = fullName.split(/\s+/).filter(Boolean);
     if (!fullName) {
-      throw new Error('Заполните ФИО.');
+      errors.full_name = 'Заполните ФИО.';
+    } else if (fullNameParts.length < 3) {
+      errors.full_name = 'ФИО должно быть полностью (минимум 3 слова).';
     }
+
+    const coachName = String(data.coach_name || '').trim();
+    if (!coachName) {
+      errors.coach_name = 'Заполните ФИО тренера.';
+    }
+
+    const city = String(data.city || '').trim();
+    if (!city) {
+      errors.city = 'Заполните город/село.';
+    }
+
+    const digits = String(data.phone || '').replace(/\D/g, '');
+    if (!digits) {
+      errors.phone = 'Заполните телефон.';
+    } else if (!(digits.length === 11 && (digits.startsWith('7') || digits.startsWith('8')))) {
+      errors.phone = 'Телефон должен содержать 11 цифр и начинаться с 7 или 8.';
+    }
+
+    if (!data.country_id) {
+      errors.country_id = 'Выберите страну.';
+    }
+    if (!data.district_id) {
+      errors.district_id = 'Выберите округ.';
+    }
+    if (!data.region_id) {
+      errors.region_id = 'Выберите регион.';
+    }
+
+    if (!data.birth_date) {
+      errors.birth_date = 'Заполните дату рождения.';
+    } else {
+      const d = new Date(data.birth_date);
+      if (Number.isNaN(d.getTime())) {
+        errors.birth_date = 'Некорректная дата рождения.';
+      } else if (d > new Date()) {
+        errors.birth_date = 'Дата рождения не может быть в будущем.';
+      }
+    }
+
+    if (!data.gender) {
+      errors.gender = 'Выберите пол.';
+    } else if (data.gender !== 'male' && data.gender !== 'female') {
+      errors.gender = 'Некорректное значение пола.';
+    }
+
+    if (!data.rank) {
+      errors.rank = 'Выберите разряд/звание.';
+    }
+
+    if (!data.photo_url) {
+      errors.photo_url = 'Загрузите фото 3×4.';
+    }
+
+    const messages = Object.values(errors).filter(Boolean) as string[];
+    return { ok: messages.length === 0, errors, message: messages[0] || '' };
+  };
+
+  const validation = validateProfile(formData);
+
+  const saveProfile = async (data: typeof formData) => {
+    const check = validateProfile(data);
+    if (!check.ok) throw new Error(check.message);
+    const fullName = String(data.full_name || '').trim();
     await api.put(`/users/me/profile`, {
       full_name: fullName,
-      phone: data.phone || null,
+      phone: String(data.phone || '').replace(/\D/g, '') || null,
       city: String(data.city || '').trim(),
       location_id: data.region_id ? data.region_id : null,
     });
@@ -267,21 +336,15 @@ function ProfileTab({
       setNotice({ severity: 'success', message: 'Профиль сохранён.' });
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.detail || 'Не удалось сохранить профиль.';
+      const msg = err?.message || err?.response?.data?.detail || 'Не удалось сохранить профиль.';
       setNotice({ severity: 'error', message: String(msg) });
     },
   });
 
   const completeMutation = useMutation({
     mutationFn: async () => {
-      if (!formData.full_name.trim()) throw new Error('Заполните ФИО.');
-      if (!formData.city.trim()) throw new Error('Заполните город.');
-      if (!formData.region_id) throw new Error('Выберите регион.');
-      if (!formData.coach_name.trim()) throw new Error('Заполните ФИО тренера.');
-      if (!formData.birth_date) throw new Error('Заполните дату рождения.');
-      if (!formData.gender) throw new Error('Выберите пол.');
-      if (!formData.rank) throw new Error('Выберите разряд/звание.');
-      if (!formData.photo_url) throw new Error('Загрузите фото 3×4.');
+      const check = validateProfile(formData);
+      if (!check.ok) throw new Error(check.message);
       await updateProfile.mutateAsync(formData);
       await api.post(`/users/me/complete`);
     },
@@ -293,7 +356,8 @@ function ProfileTab({
       setNotice({ severity: 'success', message: 'Регистрация завершена. Профиль заблокирован.' });
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.detail || 'Не удалось завершить регистрацию.';
+      const msg =
+        err?.message || err?.response?.data?.detail || 'Не удалось завершить регистрацию.';
       setNotice({ severity: 'error', message: String(msg) });
     },
   });
@@ -377,6 +441,8 @@ function ProfileTab({
             value={formData.full_name}
             onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
             disabled={locked}
+            error={showValidation && Boolean(validation.errors.full_name)}
+            helperText={showValidation ? validation.errors.full_name : ''}
           />
         </Grid>
         <Grid item xs={12} md={6}>
@@ -386,6 +452,8 @@ function ProfileTab({
             value={formData.coach_name}
             onChange={(e) => setFormData({ ...formData, coach_name: e.target.value })}
             disabled={locked}
+            error={showValidation && Boolean(validation.errors.coach_name)}
+            helperText={showValidation ? validation.errors.coach_name : ''}
           />
         </Grid>
         <Grid item xs={12} md={6}>
@@ -395,6 +463,8 @@ function ProfileTab({
             value={formData.phone}
             onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
             disabled={locked}
+            error={showValidation && Boolean(validation.errors.phone)}
+            helperText={showValidation ? validation.errors.phone : ''}
           />
         </Grid>
         <Grid item xs={12} md={6}>
@@ -406,10 +476,16 @@ function ProfileTab({
             value={formData.birth_date}
             onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
             disabled={locked}
+            error={showValidation && Boolean(validation.errors.birth_date)}
+            helperText={showValidation ? validation.errors.birth_date : ''}
           />
         </Grid>
         <Grid item xs={12} md={6}>
-          <FormControl fullWidth disabled={locked}>
+          <FormControl
+            fullWidth
+            disabled={locked}
+            error={showValidation && Boolean(validation.errors.gender)}
+          >
             <InputLabel>Пол</InputLabel>
             <Select
               value={formData.gender}
@@ -422,7 +498,11 @@ function ProfileTab({
           </FormControl>
         </Grid>
         <Grid item xs={12} md={6}>
-          <FormControl fullWidth disabled={locked}>
+          <FormControl
+            fullWidth
+            disabled={locked}
+            error={showValidation && Boolean(validation.errors.rank)}
+          >
             <InputLabel>Разряд / звание</InputLabel>
             <Select
               value={formData.rank}
@@ -450,6 +530,8 @@ function ProfileTab({
             value={formData.city}
             onChange={(e) => setFormData({ ...formData, city: e.target.value })}
             disabled={locked}
+            error={showValidation && Boolean(validation.errors.city)}
+            helperText={showValidation ? validation.errors.city : ''}
           />
         </Grid>
 
@@ -481,7 +563,11 @@ function ProfileTab({
           </FormControl>
         </Grid>
         <Grid item xs={12} md={4}>
-          <FormControl fullWidth disabled={!formData.country_id}>
+          <FormControl
+            fullWidth
+            disabled={!formData.country_id}
+            error={showValidation && Boolean(validation.errors.district_id)}
+          >
             <InputLabel>Округ</InputLabel>
             <Select
               value={formData.district_id}
@@ -500,7 +586,11 @@ function ProfileTab({
           </FormControl>
         </Grid>
         <Grid item xs={12} md={4}>
-          <FormControl fullWidth disabled={!formData.district_id}>
+          <FormControl
+            fullWidth
+            disabled={!formData.district_id}
+            error={showValidation && Boolean(validation.errors.region_id)}
+          >
             <InputLabel>Регион</InputLabel>
             <Select
               value={formData.region_id}
@@ -544,8 +634,17 @@ function ProfileTab({
           <Button
             variant='contained'
             fullWidth
-            onClick={() => updateProfile.mutate(formData)}
-            disabled={updateProfile.isPending || completeMutation.isPending || locked}
+            onClick={() => {
+              setShowValidation(true);
+              if (!validation.ok) {
+                setNotice({ severity: 'error', message: validation.message });
+                return;
+              }
+              updateProfile.mutate(formData);
+            }}
+            disabled={
+              updateProfile.isPending || completeMutation.isPending || locked || !validation.ok
+            }
           >
             Сохранить профиль
           </Button>
@@ -554,7 +653,10 @@ function ProfileTab({
           <Button
             variant='outlined'
             fullWidth
-            onClick={() => completeMutation.mutate()}
+            onClick={() => {
+              setShowValidation(true);
+              completeMutation.mutate();
+            }}
             disabled={completeMutation.isPending || updateProfile.isPending || locked}
           >
             Завершить регистрацию
