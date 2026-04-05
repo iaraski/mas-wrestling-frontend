@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import Applications from './pages/ApplicationList';
+import AthleteDirectory from './pages/AthleteDirectory';
 import AuthVerified from './pages/AuthVerified';
 import BracketView from './pages/BracketView';
 import CompetitionCreate from './pages/CompetitionCreate';
@@ -57,6 +58,7 @@ function App() {
                   <Route path='/competitions/:compId/live' element={<CompetitionLiveExecution />} />
                   <Route path='/brackets/:categoryId' element={<BracketView />} />
                   <Route path='/users' element={<UserManagement />} />
+                  <Route path='/users/athletes' element={<AthleteDirectory />} />
 
                   {/* Athlete Dashboard Route */}
                   <Route path='/dashboard' element={<UserDashboard />} />

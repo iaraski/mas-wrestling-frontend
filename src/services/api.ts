@@ -93,6 +93,40 @@ export const applicationService = {
     });
     return response.data;
   },
+  adminCreateAthleteAndApplication: async (payload: {
+    category_id: string;
+    full_name: string;
+    city: string;
+    location_id: string;
+    coach_name: string;
+    birth_date: string;
+    rank: string;
+    photo_url: string;
+    declared_weight?: number | null;
+    actual_weight?: number | null;
+  }) => {
+    const response = await api.post('/applications/admin-create', payload);
+    return response.data;
+  },
+  adminUpdateAthleteProfile: async (
+    applicationId: string,
+    payload: {
+      full_name: string;
+      city: string;
+      location_id: string;
+      coach_name: string;
+      birth_date: string;
+      rank: string;
+      photo_url: string;
+    },
+  ) => {
+    const response = await api.put(`/applications/${applicationId}/athlete-profile`, payload);
+    return response.data;
+  },
+  adminApplyAthleteToCategory: async (payload: { athlete_id: string; category_id: string }) => {
+    const response = await api.post('/applications/admin-apply', payload);
+    return response.data;
+  },
 };
 
 export const userService = {
@@ -135,6 +169,63 @@ export const userService = {
     const response = await api.delete(`/users/${userId}`);
     return response.data;
   },
+  getAthletes: async (query?: string) => {
+    const params = query ? { query } : {};
+    const response = await api.get('/users/athletes', { params });
+    return response.data as Array<{
+      athlete_id: string;
+      user_id: string;
+      full_name?: string | null;
+      phone?: string | null;
+      city?: string | null;
+      location_id?: string | null;
+      email?: string | null;
+      coach_name?: string | null;
+      birth_date?: string | null;
+      gender?: string | null;
+      rank?: string | null;
+      photo_url?: string | null;
+    }>;
+  },
+  getAthleteDetails: async (athleteId: string) => {
+    const response = await api.get(`/users/athletes/${athleteId}`);
+    return response.data as {
+      athlete_id: string;
+      user_id: string;
+      full_name?: string | null;
+      phone?: string | null;
+      city?: string | null;
+      location_id?: string | null;
+      coach_name?: string | null;
+      birth_date?: string | null;
+      gender?: string | null;
+      rank?: string | null;
+      photo_url?: string | null;
+      stage?: string | null;
+      locked: boolean;
+    };
+  },
+  updateAthleteDetails: async (
+    athleteId: string,
+    payload: {
+      full_name?: string | null;
+      phone?: string | null;
+      city?: string | null;
+      location_id?: string | null;
+      coach_name?: string | null;
+      birth_date?: string | null;
+      gender?: string | null;
+      rank?: string | null;
+      photo_url?: string | null;
+    },
+  ) => {
+    const response = await api.put(`/users/athletes/${athleteId}`, payload);
+    return response.data;
+  },
+  setAthleteEditable: async (athleteId: string, editable: boolean) => {
+    const response = await api.post(`/users/athletes/${athleteId}/editable`, { editable });
+    return response.data as { ok: boolean; stage: string; locked: boolean };
+  },
 };
 
 export const locationService = {
@@ -144,6 +235,10 @@ export const locationService = {
     if (parentId) params.parent_id = parentId;
     const response = await api.get('/locations/', { params });
     return response.data;
+  },
+  getLocationPath: async (locationId: string) => {
+    const response = await api.get('/locations/path', { params: { location_id: locationId } });
+    return response.data as { country_id?: string | null; district_id?: string | null; region_id?: string | null };
   },
 };
 
@@ -170,6 +265,23 @@ export const liveService = {
   finishBout: async (boutId: string, winnerAthleteId: string) => {
     const response = await api.post(`/live/bouts/${boutId}/finish`, {
       winner_athlete_id: winnerAthleteId,
+    });
+    return response.data;
+  },
+  cancelBout: async (boutId: string) => {
+    const response = await api.post(`/live/bouts/${boutId}/cancel`);
+    return response.data;
+  },
+  rollbackMat: async (
+    competitionId: string,
+    matNumber: number,
+    toBoutId?: string,
+    lastCount = 1,
+  ) => {
+    const response = await api.post(`/live/competitions/${competitionId}/rollback`, {
+      mat_number: matNumber,
+      to_bout_id: toBoutId,
+      last_count: lastCount,
     });
     return response.data;
   },

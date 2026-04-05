@@ -18,6 +18,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { competitionService } from '../services/api';
+import { formatWeightLabel } from '../utils/categoryFormat';
 
 type Category = {
   id: string;
@@ -198,7 +199,7 @@ const CompetitionDetails = () => {
               >
                 <ListItemText
                   primary={`${cat.gender === 'male' ? 'Мужчины' : 'Женщины'}, ${cat.age_min}-${cat.age_max} лет`}
-                  secondary={`Вес: ${cat.weight_max ? `до ${cat.weight_max} кг` : `свыше ${cat.weight_min} кг`} | Выступление: ${formatDate(cat.competition_day)}`}
+                  secondary={`Вес: ${formatWeightLabel(cat.weight_min, cat.weight_max)} | Выступление: ${formatDate(cat.competition_day)}`}
                 />
               </ListItem>
               {index < competition.categories.length - 1 && <Divider />}

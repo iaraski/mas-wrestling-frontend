@@ -1,5 +1,5 @@
-import { AppBar, Box, Button, Toolbar, Typography, Container } from '@mui/material';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { AppBar, Box, Button, Container, Toolbar, Typography } from '@mui/material';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Layout() {
@@ -16,35 +16,71 @@ export default function Layout() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <AppBar position="static">
+      <AppBar position='static'>
         <Toolbar>
-          <Typography 
-            variant="h6" 
-            component="div" 
-            sx={{ flexGrow: 1, cursor: 'pointer' }} 
+          <Typography
+            variant='h6'
+            component='div'
+            sx={{ flexGrow: 1, cursor: 'pointer' }}
             onClick={() => navigate('/')}
           >
             CompEase {isAdmin ? 'Admin' : 'Спортсмен'}
           </Typography>
           {user && (
             <>
-              {!isAdmin && (
-                <Button 
-                  color="inherit" 
+              {isAdmin ? (
+                <>
+                  <Button
+                    color='inherit'
+                    onClick={() => navigate('/competitions')}
+                    sx={{
+                      mr: 2,
+                      fontWeight: location.pathname.includes('/competitions') ? 'bold' : 'normal',
+                    }}
+                  >
+                    Соревнования
+                  </Button>
+                  <Button
+                    color='inherit'
+                    onClick={() => navigate('/users')}
+                    sx={{
+                      mr: 2,
+                      fontWeight: location.pathname === '/users' ? 'bold' : 'normal',
+                    }}
+                  >
+                    Администрирование
+                  </Button>
+                  <Button
+                    color='inherit'
+                    onClick={() => navigate('/users/athletes')}
+                    sx={{
+                      mr: 2,
+                      fontWeight: location.pathname.includes('/users/athletes') ? 'bold' : 'normal',
+                    }}
+                  >
+                    Пользователи
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  color='inherit'
                   onClick={() => navigate('/dashboard')}
-                  sx={{ mr: 2, fontWeight: location.pathname.includes('/dashboard') ? 'bold' : 'normal' }}
+                  sx={{
+                    mr: 2,
+                    fontWeight: location.pathname.includes('/dashboard') ? 'bold' : 'normal',
+                  }}
                 >
                   Мой профиль
                 </Button>
               )}
-              <Button color="inherit" onClick={handleLogout}>
+              <Button color='inherit' onClick={handleLogout}>
                 Выйти
               </Button>
             </>
           )}
         </Toolbar>
       </AppBar>
-      <Container component="main" sx={{ flexGrow: 1, py: 3 }}>
+      <Container component='main' sx={{ flexGrow: 1, py: 3 }}>
         <Outlet />
       </Container>
     </Box>

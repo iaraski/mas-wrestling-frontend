@@ -53,7 +53,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setRole(resolvedRole);
         try {
           localStorage.setItem('last_role', resolvedRole);
-        } catch {}
+        } catch (e) {
+          void e;
+        }
       } catch (e) {
         const name = (e as any)?.name;
         if (name === 'AbortError') {
@@ -83,7 +85,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           try {
             const cached = localStorage.getItem('last_role');
             if (cached) setRole(cached);
-          } catch {}
+          } catch (e) {
+            void e;
+          }
           void fetchUserRole(session.access_token);
         } else {
           setRole(null);
@@ -107,7 +111,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           try {
             const cached = localStorage.getItem('last_role');
             if (cached) setRole(cached);
-          } catch {}
+          } catch (e) {
+            void e;
+          }
           void fetchUserRole(session.access_token);
         } else {
           setRole(null);

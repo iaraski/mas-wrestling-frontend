@@ -201,6 +201,36 @@ export default function CompetitionLiveExecution() {
     },
   });
 
+  const cancelMutation = useMutation({
+    mutationFn: async (boutId: string) => {
+      return liveService.cancelBout(boutId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+    },
+    onError: (err: any) => {
+      const msg =
+        err?.response?.data?.detail || err?.response?.data?.message || 'Не удалось отменить бой.';
+      setActionError(String(msg));
+    },
+  });
+
+  const rollbackMutation = useMutation({
+    mutationFn: async ({ toBoutId, lastCount }: { toBoutId?: string; lastCount?: number }) => {
+      return liveService.rollbackMat(compId!, currentMat, toBoutId, lastCount ?? 1);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+    },
+    onError: (err: any) => {
+      const msg =
+        err?.response?.data?.detail ||
+        err?.response?.data?.message ||
+        'Не удалось откатить поединки.';
+      setActionError(String(msg));
+    },
+  });
+
   const stopMutation = useMutation({
     mutationFn: async () => {
       return liveService.stopCompetition(compId!, true);
@@ -459,6 +489,17 @@ export default function CompetitionLiveExecution() {
                           >
                             Победа (синий)
                           </Button>
+                          <Button
+                            variant='outlined'
+                            color='warning'
+                            onClick={() => {
+                              const ok = window.confirm('Отменить этот поединок?');
+                              if (ok) cancelMutation.mutate(currentMatState.current_bout!.id);
+                            }}
+                            disabled={cancelMutation.isPending}
+                          >
+                            Отмена
+                          </Button>
                         </>
                       ) : null}
                     </Box>
@@ -590,10 +631,26 @@ export default function CompetitionLiveExecution() {
                       py={0.75}
                     >
                       <Typography sx={{ pr: 1 }}>{boutNames(b)}</Typography>
-                      <Typography variant='caption' color='textSecondary'>
-                        Победитель: {winner}
-                        {score}
-                      </Typography>
+                      <Box display='flex' alignItems='center' gap={1}>
+                        <Typography variant='caption' color='textSecondary'>
+                          Победитель: {winner}
+                          {score}
+                        </Typography>
+                        <Button
+                          size='small'
+                          variant='text'
+                          color='warning'
+                          onClick={() => {
+                            const ok = window.confirm(
+                              'Откатить результаты до этого поединка (включительно)?',
+                            );
+                            if (ok) rollbackMutation.mutate({ toBoutId: b.id });
+                          }}
+                          disabled={rollbackMutation.isPending}
+                        >
+                          Откатить
+                        </Button>
+                      </Box>
                     </Box>
                   );
                 })
