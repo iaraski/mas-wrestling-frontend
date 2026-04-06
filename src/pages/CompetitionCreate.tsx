@@ -45,7 +45,6 @@ type CategoryGroupForm = {
 type CompetitionCreateFormValues = {
   name: string;
   description?: string;
-  preview_url?: string;
   scale: 'world' | 'country' | 'region';
   type: 'open' | 'restricted';
   location_id: string;
@@ -77,7 +76,6 @@ const CompetitionCreate = () => {
   const { compId } = useParams<{ compId: string }>();
   const isEditMode = !!compId;
   const queryClient = useQueryClient();
-  const [previewFile, setPreviewFile] = useState<File | null>(null);
 
   const {
     register,
@@ -90,7 +88,6 @@ const CompetitionCreate = () => {
     defaultValues: {
       name: '',
       description: '',
-      preview_url: '',
       scale: 'region',
       type: 'open',
       location_id: '',
@@ -139,7 +136,6 @@ const CompetitionCreate = () => {
       reset({
         name: existingCompetition.name || '',
         description: existingCompetition.description || '',
-        preview_url: existingCompetition.preview_url || '',
         scale: formScale,
         type: existingCompetition.type || 'open',
         location_id: formLocationId,
@@ -192,11 +188,19 @@ const CompetitionCreate = () => {
           } as any);
         });
 
-        const weightsArray = Array.from(groupsMap.values()).map((g) => ({
-          ...g,
-          weights: g.weights.map((w: any) => w.value), // keep as string array for UI
-          _ids: g.weights.map((w: any) => w.id), // store ids secretly
-        }));
+        const weightsArray = Array.from(groupsMap.values()).map((g) => {
+          const unique = new Map<string, string>();
+          (g.weights as any[]).forEach((w) => {
+            const value = String(w.value || '').trim();
+            if (!value) return;
+            if (!unique.has(value)) unique.set(value, String(w.id));
+          });
+          return {
+            ...g,
+            weights: Array.from(unique.keys()),
+            _ids: Array.from(unique.values()),
+          };
+        });
 
         // Replace the form fields safely. We must wait for the next tick to ensure
         // react-hook-form correctly registers the new array values
@@ -335,9 +339,6 @@ const CompetitionCreate = () => {
       // Remove temporary field
       // @ts-ignore
       delete formattedData.category_groups;
-      if (!formattedData.preview_url) {
-        delete formattedData.preview_url;
-      }
 
       console.log('[Frontend] Sending formatted data:', formattedData);
     } catch (err) {
@@ -347,23 +348,9 @@ const CompetitionCreate = () => {
     }
 
     try {
-      const saved = await mutation.mutateAsync(formattedData as any);
-      const savedId = isEditMode ? compId! : saved?.id;
-
-      let previewUploadFailed = false;
-      if (previewFile && savedId) {
-        try {
-          await competitionService.uploadCompetitionPreview(savedId, previewFile);
-        } catch (e) {
-          console.error('[Frontend] Preview upload failed:', e);
-          previewUploadFailed = true;
-        }
-      }
+      await mutation.mutateAsync(formattedData as any);
 
       queryClient.invalidateQueries({ queryKey: ['competitions'] });
-      if (previewUploadFailed) {
-        alert('Соревнование сохранено, но превью не загрузилось. Проверьте настройки bucket/ключи.');
-      }
       navigate('/');
     } catch (err) {
       console.error('[Frontend] Save competition failed:', err);
@@ -412,23 +399,6 @@ const CompetitionCreate = () => {
                   inputLabel: { shrink: true },
                 }}
               />
-            </Grid>
-
-            <Grid item xs={12}>
-              <Button variant='outlined' component='label' fullWidth>
-                {previewFile ? `Превью: ${previewFile.name}` : 'Загрузить превью (картинка)'}
-                <input
-                  hidden
-                  type='file'
-                  accept='image/*'
-                  onChange={(e) => setPreviewFile(e.target.files?.[0] || null)}
-                />
-              </Button>
-              {isEditMode && existingCompetition?.preview_url ? (
-                <Typography variant='body2' sx={{ mt: 1, wordBreak: 'break-all' }}>
-                  Текущее превью: {existingCompetition.preview_url}
-                </Typography>
-              ) : null}
             </Grid>
 
             <Grid item xs={12} sm={6}>

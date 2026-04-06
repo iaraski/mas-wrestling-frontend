@@ -18,7 +18,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { competitionService } from '../services/api';
-import { formatWeightLabel } from '../utils/categoryFormat';
+import { formatCategoryLabel } from '../utils/categoryFormat';
 
 type Category = {
   id: string;
@@ -85,6 +85,23 @@ const CompetitionDetails = () => {
     return new Date(dateString).toLocaleDateString();
   };
 
+  const uniqueCategories = (() => {
+    const map = new Map<string, Category>();
+    for (const cat of competition.categories || []) {
+      const key = [
+        cat.gender,
+        cat.age_min,
+        cat.age_max,
+        cat.weight_min,
+        cat.weight_max ?? '',
+        cat.competition_day ?? '',
+        cat.mandate_day ?? '',
+      ].join('|');
+      if (!map.has(key)) map.set(key, cat);
+    }
+    return Array.from(map.values());
+  })();
+
   return (
     <Container maxWidth='lg' sx={{ mt: 4, mb: 4 }}>
       <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/')} sx={{ mb: 2 }}>
@@ -141,14 +158,6 @@ const CompetitionDetails = () => {
             alignItems='flex-end'
             gap={1}
           >
-            {competition.preview_url ? (
-              <Box
-                component='img'
-                src={competition.preview_url}
-                alt='preview'
-                sx={{ width: '100%', maxWidth: 240, borderRadius: 1, mb: 1 }}
-              />
-            ) : null}
             <Button
               variant='contained'
               fullWidth
@@ -184,7 +193,7 @@ const CompetitionDetails = () => {
       </Typography>
       <Paper elevation={1}>
         <List>
-          {competition.categories.map((cat, index) => (
+          {uniqueCategories.map((cat, index) => (
             <div key={cat.id}>
               <ListItem
                 secondaryAction={
@@ -198,11 +207,18 @@ const CompetitionDetails = () => {
                 }
               >
                 <ListItemText
-                  primary={`${cat.gender === 'male' ? 'Мужчины' : 'Женщины'}, ${cat.age_min}-${cat.age_max} лет`}
-                  secondary={`Вес: ${formatWeightLabel(cat.weight_min, cat.weight_max)} | Выступление: ${formatDate(cat.competition_day)}`}
+                  primary={formatCategoryLabel({
+                    gender: cat.gender,
+                    ageMin: cat.age_min,
+                    ageMax: cat.age_max,
+                    weightMin: cat.weight_min,
+                    weightMax: cat.weight_max,
+                    atDate: competition.start_date,
+                  })}
+                  secondary={`Выступление: ${formatDate(cat.competition_day)}`}
                 />
               </ListItem>
-              {index < competition.categories.length - 1 && <Divider />}
+              {index < uniqueCategories.length - 1 && <Divider />}
             </div>
           ))}
         </List>

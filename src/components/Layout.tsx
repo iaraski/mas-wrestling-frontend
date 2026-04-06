@@ -24,7 +24,7 @@ export default function Layout() {
             sx={{ flexGrow: 1, cursor: 'pointer' }}
             onClick={() => navigate('/')}
           >
-            CompEase {isAdmin ? 'Admin' : 'Спортсмен'}
+            MAS-WRESTLING ONLINE {isAdmin ? 'Admin' : 'Спортсмен'}
           </Typography>
           {user && (
             <>

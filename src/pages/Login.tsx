@@ -2,6 +2,7 @@ import { Alert, Box, Button, Container, Paper, Tab, Tabs, TextField } from '@mui
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import api from '../services/api';
 
 export default function Login() {
   const [tab, setTab] = useState(0);
@@ -14,7 +15,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [consent, setConsent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
-  const [codeSent, setCodeSent] = useState(false);
+  const [regStep, setRegStep] = useState<'credentials' | 'confirm'>('credentials');
   const [cooldownLeft, setCooldownLeft] = useState(0);
   const navigate = useNavigate();
 
@@ -50,23 +51,33 @@ export default function Login() {
       setLoading(false);
       return;
     }
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email: cleanEmail,
-      options: { shouldCreateUser: true },
-    });
-
-    if (error) {
-      setError(formatAuthError(error.message));
+    const newPassword = password.trim();
+    if (!newPassword) {
+      setError('Придумайте пароль.');
+      setLoading(false);
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError('Пароль должен быть не короче 8 символов.');
       setLoading(false);
       return;
     }
 
-    setCodeSent(true);
+    // Use backend custom OTP
+    try {
+      await api.post('/auth-custom/otp/send', { email: cleanEmail });
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || 'Не удалось отправить письмо.';
+      setError(String(msg));
+      setLoading(false);
+      return;
+    }
+
     setCooldownLeft(60);
+    setRegStep('confirm');
     setNotice({
       severity: 'info',
-      message: 'Мы отправили код на email. Введите код и придумайте пароль.',
+      message: 'Мы отправили письмо с кодом. Введите код ниже для подтверждения email.',
     });
     setLoading(false);
   };
@@ -103,7 +114,13 @@ export default function Login() {
         navigate('/');
       }
     } else {
-      // Register: email + code + password
+      if (regStep === 'credentials') {
+        setLoading(false);
+        await handleSendCode();
+        return;
+      }
+
+      // Register: step 2 confirm email (OTP code)
       if (!consent) {
         setError('Необходимо согласиться на обработку персональных данных');
         setLoading(false);
@@ -123,6 +140,11 @@ export default function Login() {
         setLoading(false);
         return;
       }
+      if (!/^\d{6,8}$/.test(token)) {
+        setError('Код должен состоять из 6–8 цифр.');
+        setLoading(false);
+        return;
+      }
 
       const newPassword = password.trim();
       if (!newPassword) {
@@ -131,40 +153,28 @@ export default function Login() {
         return;
       }
 
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: cleanEmail,
-        token,
-        type: 'email',
-      });
-
-      if (error) {
-        setError(formatAuthError(error.message));
+      try {
+        await api.post('/auth-custom/otp/verify', {
+          email: cleanEmail,
+          code: token,
+          password: newPassword,
+        });
+        const { error: signErr } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: newPassword,
+        });
+        if (signErr) {
+          setError(formatAuthError(signErr.message));
+          setLoading(false);
+          return;
+        }
+        navigate('/');
+      } catch (err: any) {
+        const msg = err?.response?.data?.detail || err?.message || 'Не удалось подтвердить код.';
+        setError(String(msg));
         setLoading(false);
         return;
       }
-
-      if (data.session) {
-        const { error: passErr } = await supabase.auth.updateUser({ password: newPassword });
-        if (passErr) {
-          setError(formatAuthError(passErr.message));
-          setLoading(false);
-          return;
-        }
-      }
-
-      if (data.user) {
-        const { error: dbError } = await supabase
-          .from('users')
-          .upsert({ id: data.user.id, email: data.user.email }, { onConflict: 'id' });
-
-        if (dbError) {
-          setError(dbError.message);
-          setLoading(false);
-          return;
-        }
-      }
-
-      navigate('/');
     }
   };
 
@@ -189,9 +199,9 @@ export default function Login() {
               if (newValue === 0) {
                 setPassword('');
               } else {
-                setOtpCode('');
                 setPassword('');
-                setCodeSent(false);
+                setRegStep('credentials');
+                setOtpCode('');
                 setCooldownLeft(0);
               }
             }}
@@ -225,6 +235,7 @@ export default function Login() {
               autoFocus
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={tab === 1 && regStep === 'confirm'}
             />
             {tab === 0 ? (
               <TextField
@@ -240,31 +251,34 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             ) : null}
-            {tab === 1 ? (
-              <>
-                <TextField
-                  margin='normal'
-                  required
-                  fullWidth
-                  name='otp'
-                  label='Код из письма'
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value)}
-                />
-                <TextField
-                  margin='normal'
-                  required
-                  fullWidth
-                  name='password'
-                  label='Пароль'
-                  type='password'
-                  id='reg-password'
-                  autoComplete='new-password'
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </>
+            {tab === 1 && regStep === 'credentials' ? (
+              <TextField
+                margin='normal'
+                required
+                fullWidth
+                name='password'
+                label='Пароль'
+                type='password'
+                id='reg-password'
+                autoComplete='new-password'
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
             ) : null}
+            {tab === 1 && regStep === 'confirm' ? (
+              <TextField
+                margin='normal'
+                required
+                fullWidth
+                name='otp'
+                label='Код из письма'
+                value={otpCode}
+                onChange={(e) => setOtpCode(String(e.target.value).replace(/\D/g, '').slice(0, 8))}
+                inputProps={{ inputMode: 'numeric' }}
+                helperText={cooldownLeft > 0 ? `Повторная отправка через ${cooldownLeft}с` : ''}
+              />
+            ) : null}
+
             {tab === 1 && (
               <Box sx={{ mt: 1 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -298,31 +312,60 @@ export default function Login() {
               </Button>
             ) : (
               <>
-                <Button
-                  type='button'
-                  fullWidth
-                  variant='outlined'
-                  sx={{ mt: 3, mb: 1 }}
-                  disabled={loading || cooldownLeft > 0}
-                  onClick={handleSendCode}
-                >
-                  {loading
-                    ? 'Загрузка...'
-                    : cooldownLeft > 0
-                      ? `Отправить код (${cooldownLeft}с)`
-                      : codeSent
-                        ? 'Отправить код ещё раз'
-                        : 'Отправить код'}
-                </Button>
-                <Button
-                  type='submit'
-                  fullWidth
-                  variant='contained'
-                  sx={{ mb: 2 }}
-                  disabled={loading}
-                >
-                  {loading ? 'Загрузка...' : 'Зарегистрироваться'}
-                </Button>
+                {regStep === 'credentials' ? (
+                  <Button
+                    type='button'
+                    fullWidth
+                    variant='contained'
+                    sx={{ mt: 3, mb: 2 }}
+                    disabled={loading || cooldownLeft > 0}
+                    onClick={() => void handleSendCode()}
+                  >
+                    {loading
+                      ? 'Загрузка...'
+                      : cooldownLeft > 0
+                        ? `Отправить письмо (${cooldownLeft}с)`
+                        : 'Отправить письмо'}
+                  </Button>
+                ) : null}
+                {regStep === 'confirm' ? (
+                  <>
+                    <Button
+                      type='submit'
+                      fullWidth
+                      variant='contained'
+                      sx={{ mt: 3, mb: 2 }}
+                      disabled={loading}
+                    >
+                      {loading ? 'Загрузка...' : 'Подтвердить код'}
+                    </Button>
+                    {cooldownLeft === 0 ? (
+                      <Button
+                        type='button'
+                        fullWidth
+                        variant='outlined'
+                        disabled={loading}
+                        onClick={() => void handleSendCode()}
+                      >
+                        Отправить письмо снова
+                      </Button>
+                    ) : null}
+                    <Button
+                      type='button'
+                      fullWidth
+                      variant='text'
+                      disabled={loading}
+                      onClick={() => {
+                        setRegStep('credentials');
+                        setOtpCode('');
+                        setError('');
+                        setNotice(null);
+                      }}
+                    >
+                      Назад
+                    </Button>
+                  </>
+                ) : null}
               </>
             )}
           </Box>

@@ -30,9 +30,9 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { applicationService, competitionService, userService } from '../services/api';
-import { formatWeightLabel } from '../utils/categoryFormat';
 import { supabase } from '../lib/supabase';
+import { applicationService, competitionService, userService } from '../services/api';
+import { formatCategoryLabel } from '../utils/categoryFormat';
 
 type AthleteRow = {
   athlete_id: string;
@@ -284,11 +284,7 @@ export default function AthleteDirectory() {
                 <TableRow key={a.athlete_id}>
                   <TableCell>{a.full_name || '—'}</TableCell>
                   <TableCell>
-                    {a.gender ? (
-                      <Chip label={a.gender === 'male' ? 'М' : 'Ж'} size='small' />
-                    ) : (
-                      '—'
-                    )}
+                    {a.gender ? <Chip label={a.gender === 'male' ? 'М' : 'Ж'} size='small' /> : '—'}
                   </TableCell>
                   <TableCell>{a.birth_date || '—'}</TableCell>
                   <TableCell>{a.coach_name || '—'}</TableCell>
@@ -354,10 +350,14 @@ export default function AthleteDirectory() {
               {eligibleCategories.map((cat) => (
                 <Chip
                   key={cat.id}
-                  label={`${cat.gender === 'male' ? 'М' : 'Ж'} | ${cat.age_min}-${cat.age_max} | ${formatWeightLabel(
-                    cat.weight_min,
-                    cat.weight_max,
-                  )}`}
+                  label={formatCategoryLabel({
+                    gender: cat.gender,
+                    ageMin: cat.age_min,
+                    ageMax: cat.age_max,
+                    weightMin: cat.weight_min,
+                    weightMax: cat.weight_max,
+                    atDate: competitionDetails?.start_date || null,
+                  })}
                   onClick={() => applyMutation.mutate(cat.id)}
                   clickable
                   color='primary'
@@ -465,7 +465,12 @@ export default function AthleteDirectory() {
                 {editForm.photo_url ? (
                   <Box mt={1}>
                     {!imageLoaded && (
-                      <Skeleton variant='rectangular' width='100%' height={200} sx={{ borderRadius: '4px' }} />
+                      <Skeleton
+                        variant='rectangular'
+                        width='100%'
+                        height={200}
+                        sx={{ borderRadius: '4px' }}
+                      />
                     )}
                     <Box
                       component='img'
@@ -473,7 +478,8 @@ export default function AthleteDirectory() {
                         editForm.photo_url.startsWith('http')
                           ? editForm.photo_url
                           : editForm.photo_url.includes('documents/')
-                            ? supabase.storage.from('avatars').getPublicUrl(editForm.photo_url).data.publicUrl
+                            ? supabase.storage.from('avatars').getPublicUrl(editForm.photo_url).data
+                                .publicUrl
                             : editForm.photo_url
                       }
                       alt='Фото 3x4'

@@ -38,7 +38,7 @@ import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from 'rea
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { applicationService, competitionService, userService } from '../services/api';
-import { formatWeightLabel } from '../utils/categoryFormat';
+import { formatCategoryLabel } from '../utils/categoryFormat';
 
 type Gender = 'male' | 'female';
 
@@ -252,14 +252,18 @@ const ApplicationList = () => {
     for (const cat of competition?.categories || []) {
       map.set(
         cat.id,
-        `${cat.gender === 'male' ? 'М' : 'Ж'}, ${cat.age_min}-${cat.age_max} л, ${formatWeightLabel(
-          cat.weight_min,
-          cat.weight_max,
-        )}`,
+        formatCategoryLabel({
+          gender: cat.gender,
+          ageMin: cat.age_min,
+          ageMax: cat.age_max,
+          weightMin: cat.weight_min,
+          weightMax: cat.weight_max,
+          atDate: competition?.start_date || null,
+        }),
       );
     }
     return map;
-  }, [competition?.categories]);
+  }, [competition?.categories, competition?.start_date]);
 
   const getCategoryLabel = useCallback(
     (catId: string) => {
@@ -406,8 +410,14 @@ const ApplicationList = () => {
                   size='small'
                   onClick={() => navigate(`/brackets/${cat.id}`)}
                 >
-                  {cat.gender === 'male' ? 'М' : 'Ж'}, {cat.age_min}-{cat.age_max} л,{' '}
-                  {formatWeightLabel(cat.weight_min, cat.weight_max)}
+                  {formatCategoryLabel({
+                    gender: cat.gender,
+                    ageMin: cat.age_min,
+                    ageMax: cat.age_max,
+                    weightMin: cat.weight_min,
+                    weightMax: cat.weight_max,
+                    atDate: competition.start_date,
+                  })}
                 </Button>
               );
             })}
@@ -466,8 +476,14 @@ const ApplicationList = () => {
                 <MenuItem value='all'>Все</MenuItem>
                 {(competition?.categories || []).map((cat) => (
                   <MenuItem key={cat.id} value={cat.id}>
-                    {cat.gender === 'male' ? 'М' : 'Ж'}, {cat.age_min}-{cat.age_max} л,{' '}
-                    {formatWeightLabel(cat.weight_min, cat.weight_max)}
+                    {formatCategoryLabel({
+                      gender: cat.gender,
+                      ageMin: cat.age_min,
+                      ageMax: cat.age_max,
+                      weightMin: cat.weight_min,
+                      weightMax: cat.weight_max,
+                      atDate: competition?.start_date || null,
+                    })}
                   </MenuItem>
                 ))}
               </Select>
@@ -705,10 +721,14 @@ const ApplicationList = () => {
                 {eligibleCategoriesForAthlete.map((cat) => (
                   <Chip
                     key={cat.id}
-                    label={`${cat.gender === 'male' ? 'М' : 'Ж'} | ${cat.age_min}-${cat.age_max} | ${formatWeightLabel(
-                      cat.weight_min,
-                      cat.weight_max,
-                    )}`}
+                    label={formatCategoryLabel({
+                      gender: cat.gender,
+                      ageMin: cat.age_min,
+                      ageMax: cat.age_max,
+                      weightMin: cat.weight_min,
+                      weightMax: cat.weight_max,
+                      atDate: competition?.start_date || null,
+                    })}
                     clickable
                     variant='outlined'
                     color='primary'
@@ -987,22 +1007,18 @@ const ApplicationList = () => {
                           label='Итоговая категория'
                           onChange={(e) => setSelectedCategoryId(e.target.value)}
                         >
-                          {competition?.categories?.map((cat) => {
-                            let weightLabel = '';
-                            if (cat.weight_max === 999) {
-                              weightLabel = `${Math.floor(cat.weight_min)}+ кг`;
-                            } else {
-                              weightLabel = cat.weight_max
-                                ? `до ${cat.weight_max} кг`
-                                : `свыше ${cat.weight_min} кг`;
-                            }
-                            return (
-                              <MenuItem key={cat.id} value={cat.id}>
-                                {cat.gender === 'male' ? 'М' : 'Ж'}, {cat.age_min}-{cat.age_max} л,{' '}
-                                {weightLabel}
-                              </MenuItem>
-                            );
-                          })}
+                          {competition?.categories?.map((cat) => (
+                            <MenuItem key={cat.id} value={cat.id}>
+                              {formatCategoryLabel({
+                                gender: cat.gender,
+                                ageMin: cat.age_min,
+                                ageMax: cat.age_max,
+                                weightMin: cat.weight_min,
+                                weightMax: cat.weight_max,
+                                atDate: competition?.start_date || null,
+                              })}
+                            </MenuItem>
+                          ))}
                         </Select>
                       </FormControl>
                     </Box>

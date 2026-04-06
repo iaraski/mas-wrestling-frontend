@@ -18,12 +18,17 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import dayjs from 'dayjs';
+import 'dayjs/locale/ru';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import api, { locationService } from '../services/api';
-import { formatWeightLabel } from '../utils/categoryFormat';
+import { formatCategoryLabel } from '../utils/categoryFormat';
 
 export default function UserDashboard() {
   const { user } = useAuth();
@@ -97,6 +102,7 @@ function ProfileTab({
   });
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [photoSignedUrl, setPhotoSignedUrl] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [showValidation, setShowValidation] = useState(false);
 
   const { data: reg } = useQuery({
@@ -209,7 +215,7 @@ function ProfileTab({
         full_name: profile.full_name || '',
         phone: profile.phone || '',
         city: profile.city || '',
-        region_id: '',
+        region_id: profile.location_id || '',
       }));
     }
     if (athlete) {
@@ -238,6 +244,31 @@ function ProfileTab({
       region_id: locationPath.region_id || prev.region_id,
     }));
   }, [locationPath]);
+
+  useEffect(() => {
+    if (locationPath?.country_id) {
+      queryClient.prefetchQuery({
+        queryKey: ['locations', 'district', locationPath.country_id],
+        queryFn: async () => {
+          const { data } = await api.get(`/locations/`, {
+            params: { type: 'district', parent_id: locationPath.country_id },
+          });
+          return data;
+        },
+      });
+    }
+    if (locationPath?.district_id) {
+      queryClient.prefetchQuery({
+        queryKey: ['locations', 'region', locationPath.district_id],
+        queryFn: async () => {
+          const { data } = await api.get(`/locations/`, {
+            params: { type: 'region', parent_id: locationPath.district_id },
+          });
+          return data;
+        },
+      });
+    }
+  }, [locationPath?.country_id, locationPath?.district_id]);
 
   const validateProfile = (data: typeof formData) => {
     const errors: Partial<Record<keyof typeof formData, string>> = {};
@@ -299,7 +330,7 @@ function ProfileTab({
     }
 
     if (!data.photo_url) {
-      errors.photo_url = 'Загрузите фото 3×4.';
+      if (!photoFile) errors.photo_url = 'Загрузите фото 3×4.';
     }
 
     const messages = Object.values(errors).filter(Boolean) as string[];
@@ -311,20 +342,26 @@ function ProfileTab({
   const saveProfile = async (data: typeof formData) => {
     const check = validateProfile(data);
     if (!check.ok) throw new Error(check.message);
-    const fullName = String(data.full_name || '').trim();
-    await api.put(`/users/me/profile`, {
-      full_name: fullName,
-      phone: String(data.phone || '').replace(/\D/g, '') || null,
-      city: String(data.city || '').trim(),
-      location_id: data.region_id ? data.region_id : null,
+    const form = new FormData();
+    form.append('full_name', String(data.full_name || '').trim());
+    form.append('phone', String(data.phone || ''));
+    form.append('city', String(data.city || '').trim());
+    form.append('location_id', data.region_id ? String(data.region_id) : '');
+    form.append('coach_name', String(data.coach_name || '').trim());
+    form.append('birth_date', data.birth_date ? String(data.birth_date) : '');
+    form.append('gender', data.gender ? String(data.gender) : '');
+    form.append('rank', data.rank ? String(data.rank) : '');
+    form.append('photo_url', data.photo_url ? String(data.photo_url) : '');
+    if (photoFile) form.append('photo', photoFile);
+
+    const { data: resp } = await api.post(`/users/me/profile/submit`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
-    await api.put(`/users/me/athlete`, null, { params: { coach_name: data.coach_name } });
-    await api.put(`/users/me/details`, {
-      birth_date: data.birth_date ? data.birth_date : null,
-      gender: data.gender || null,
-      rank: data.rank || null,
-      photo_url: data.photo_url || null,
-    });
+    const savedPhotoUrl = resp?.photo_url ? String(resp.photo_url) : null;
+    if (savedPhotoUrl) {
+      setFormData((prev) => ({ ...prev, photo_url: savedPhotoUrl }));
+      setPhotoFile(null);
+    }
   };
 
   const updateProfile = useMutation({
@@ -333,31 +370,14 @@ function ProfileTab({
       queryClient.invalidateQueries({ queryKey: ['profile', userId] });
       queryClient.invalidateQueries({ queryKey: ['athlete', userId] });
       queryClient.invalidateQueries({ queryKey: ['details', userId] });
-      setNotice({ severity: 'success', message: 'Профиль сохранён.' });
+      queryClient.invalidateQueries({ queryKey: ['details_me'] });
+      queryClient.invalidateQueries({ queryKey: ['profile_me'] });
+      queryClient.invalidateQueries({ queryKey: ['athlete_me'] });
+      setShowValidation(false);
+      setNotice({ severity: 'success', message: 'Регистрация завершена!' });
     },
     onError: (err: any) => {
       const msg = err?.message || err?.response?.data?.detail || 'Не удалось сохранить профиль.';
-      setNotice({ severity: 'error', message: String(msg) });
-    },
-  });
-
-  const completeMutation = useMutation({
-    mutationFn: async () => {
-      const check = validateProfile(formData);
-      if (!check.ok) throw new Error(check.message);
-      await updateProfile.mutateAsync(formData);
-      await api.post(`/users/me/complete`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['registration', userId] });
-      queryClient.invalidateQueries({ queryKey: ['profile', userId] });
-      queryClient.invalidateQueries({ queryKey: ['athlete', userId] });
-      queryClient.invalidateQueries({ queryKey: ['details', userId] });
-      setNotice({ severity: 'success', message: 'Регистрация завершена. Профиль заблокирован.' });
-    },
-    onError: (err: any) => {
-      const msg =
-        err?.message || err?.response?.data?.detail || 'Не удалось завершить регистрацию.';
       setNotice({ severity: 'error', message: String(msg) });
     },
   });
@@ -372,17 +392,8 @@ function ProfileTab({
         if (prev) URL.revokeObjectURL(prev);
         return localUrl;
       });
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${userId}-${Math.random()}.${fileExt}`;
-      const filePath = `documents/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file, {
-        upsert: true,
-        contentType: file.type || 'image/jpeg',
-      });
-      if (uploadError) throw uploadError;
-      setFormData((prev) => ({ ...prev, photo_url: filePath }));
-      setNotice({ severity: 'success', message: 'Фото загружено.' });
+      setPhotoFile(file);
+      setNotice({ severity: 'info', message: 'Фото выбрано. Нажмите «Сохранить профиль».' });
     } catch (e: any) {
       const msg = e?.message || e?.error_description || 'Ошибка при загрузке фото.';
       setNotice({ severity: 'error', message: String(msg) });
@@ -468,17 +479,25 @@ function ProfileTab({
           />
         </Grid>
         <Grid item xs={12} md={6}>
-          <TextField
-            fullWidth
-            type='date'
-            label='Дата рождения'
-            InputLabelProps={{ shrink: true }}
-            value={formData.birth_date}
-            onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
-            disabled={locked}
-            error={showValidation && Boolean(validation.errors.birth_date)}
-            helperText={showValidation ? validation.errors.birth_date : ''}
-          />
+          <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale='ru'>
+            <DatePicker
+              label='Дата рождения'
+              format='DD.MM.YYYY'
+              value={formData.birth_date ? dayjs(formData.birth_date) : null}
+              onChange={(v) => {
+                const iso = v && v.isValid() ? v.format('YYYY-MM-DD') : '';
+                setFormData({ ...formData, birth_date: iso });
+              }}
+              disabled={locked}
+              slotProps={{
+                textField: {
+                  fullWidth: true,
+                  error: showValidation && Boolean(validation.errors.birth_date),
+                  helperText: showValidation ? validation.errors.birth_date : '',
+                },
+              }}
+            />
+          </LocalizationProvider>
         </Grid>
         <Grid item xs={12} md={6}>
           <FormControl
@@ -539,7 +558,7 @@ function ProfileTab({
           <Typography variant='h6'>Регион</Typography>
         </Grid>
         <Grid item xs={12} md={4}>
-          <FormControl fullWidth>
+          <FormControl fullWidth error={showValidation && Boolean(validation.errors.country_id)}>
             <InputLabel>Страна</InputLabel>
             <Select
               value={formData.country_id}
@@ -554,6 +573,10 @@ function ProfileTab({
               }
               disabled={locked}
             >
+              {formData.country_id &&
+              !countries?.some((c: any) => String(c.id) === String(formData.country_id)) ? (
+                <MenuItem value={formData.country_id}>Загрузка...</MenuItem>
+              ) : null}
               {countries?.map((c: any) => (
                 <MenuItem key={c.id} value={c.id}>
                   {c.name}
@@ -577,6 +600,10 @@ function ProfileTab({
               }
               disabled={locked || !formData.country_id}
             >
+              {formData.district_id &&
+              !districts?.some((d: any) => String(d.id) === String(formData.district_id)) ? (
+                <MenuItem value={formData.district_id}>Загрузка...</MenuItem>
+              ) : null}
               {districts?.map((d: any) => (
                 <MenuItem key={d.id} value={d.id}>
                   {d.name}
@@ -598,6 +625,10 @@ function ProfileTab({
               onChange={(e) => setFormData({ ...formData, region_id: e.target.value })}
               disabled={locked || !formData.district_id}
             >
+              {formData.region_id &&
+              !regions?.some((r: any) => String(r.id) === String(formData.region_id)) ? (
+                <MenuItem value={formData.region_id}>Загрузка...</MenuItem>
+              ) : null}
               {regions?.map((r: any) => (
                 <MenuItem key={r.id} value={r.id}>
                   {r.name}
@@ -642,24 +673,9 @@ function ProfileTab({
               }
               updateProfile.mutate(formData);
             }}
-            disabled={
-              updateProfile.isPending || completeMutation.isPending || locked || !validation.ok
-            }
+            disabled={updateProfile.isPending || locked || !validation.ok}
           >
             Сохранить профиль
-          </Button>
-        </Grid>
-        <Grid item xs={12}>
-          <Button
-            variant='outlined'
-            fullWidth
-            onClick={() => {
-              setShowValidation(true);
-              completeMutation.mutate();
-            }}
-            disabled={completeMutation.isPending || updateProfile.isPending || locked}
-          >
-            Завершить регистрацию
           </Button>
         </Grid>
       </Grid>
@@ -698,10 +714,28 @@ function ApplicationsTab({
           <Paper sx={{ p: 2 }}>
             <Typography variant='h6'>{app.competitions.name}</Typography>
             <Typography>
-              Категория: {app.competition_categories.gender === 'male' ? 'М' : 'Ж'},{' '}
-              {app.competition_categories.age_min}-{app.competition_categories.age_max} лет
+              Категория:{' '}
+              {formatCategoryLabel({
+                gender: app.competition_categories.gender,
+                ageMin: app.competition_categories.age_min,
+                ageMax: app.competition_categories.age_max,
+                weightMin: app.competition_categories.weight_min,
+                weightMax: app.competition_categories.weight_max,
+                atDate: app.competitions.start_date,
+              })}
             </Typography>
-            <Typography>Статус: {app.status}</Typography>
+            <Typography>
+              Статус:{' '}
+              {app.status === 'pending'
+                ? 'заявка на рассмотрении'
+                : app.status === 'approved'
+                  ? 'одобрена'
+                  : app.status === 'weighed'
+                    ? 'взвешен(а)'
+                    : app.status === 'rejected'
+                      ? 'отклонена'
+                      : String(app.status || '—')}
+            </Typography>
           </Paper>
         </Grid>
       ))}
@@ -727,32 +761,42 @@ function CompetitionsTab({
     },
   });
 
-  const { data: reg } = useQuery({
-    queryKey: ['registration_me'],
+  const { data: details } = useQuery({
+    queryKey: ['details_me'],
     queryFn: async () => {
       try {
-        const { data } = await api.get(`/users/me/registration`);
-        return data;
+        const { data } = await api.get(`/users/me/details`);
+        return data as {
+          birth_date?: string | null;
+          gender?: string | null;
+          rank?: string | null;
+          photo_url?: string | null;
+        };
       } catch {
-        setNotice({ severity: 'error', message: 'Не удалось загрузить статус регистрации.' });
         return null;
       }
     },
     retry: false,
   });
 
-  const { data: details } = useQuery({
-    queryKey: ['details_me'],
+  const { data: applications } = useQuery({
+    queryKey: ['my_applications'],
     queryFn: async () => {
       try {
-        const { data } = await api.get(`/users/me/details`);
-        return data as { birth_date?: string | null; gender?: string | null };
+        const { data } = await api.get(`/users/me/applications`);
+        return data as Array<{ id: string; competition_id?: string }>;
       } catch {
-        return null;
+        return [];
       }
     },
     retry: false,
   });
+
+  const appliedCompetitionIds = new Set<string>(
+    (applications || [])
+      .map((a: any) => String(a?.competition_id || a?.competition?.id || a?.competitions?.id || ''))
+      .filter(Boolean),
+  );
 
   const applyMutation = useMutation({
     mutationFn: async (categoryId: string) => {
@@ -760,12 +804,17 @@ function CompetitionsTab({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my_applications'] });
+      queryClient.invalidateQueries({ queryKey: ['registration'] });
+      queryClient.invalidateQueries({ queryKey: ['registration_me'] });
       setNotice({ severity: 'success', message: 'Заявка успешно подана.' });
     },
     onError: (err: any) => {
       setNotice({
         severity: 'error',
-        message: err.response?.data?.detail || 'Ошибка при подаче заявки',
+        message:
+          err.response?.data?.detail === 'Already applied to this competition'
+            ? 'Вы уже подали заявку на это соревнование.'
+            : err.response?.data?.detail || 'Ошибка при подаче заявки',
       });
     },
   });
@@ -815,10 +864,14 @@ function CompetitionsTab({
                 .map((cat: any) => (
                   <Chip
                     key={cat.id}
-                    label={`${cat.gender === 'male' ? 'М' : 'Ж'} | ${cat.age_min}-${cat.age_max} лет | ${formatWeightLabel(
-                      cat.weight_min,
-                      cat.weight_max,
-                    )}`}
+                    label={formatCategoryLabel({
+                      gender: cat.gender,
+                      ageMin: cat.age_min,
+                      ageMax: cat.age_max,
+                      weightMin: cat.weight_min,
+                      weightMax: cat.weight_max,
+                      atDate: comp.start_date,
+                    })}
                     onClick={() => {
                       if (deadlinePassed) {
                         setNotice({
@@ -827,10 +880,10 @@ function CompetitionsTab({
                         });
                         return;
                       }
-                      if (!reg?.locked) {
+                      if (appliedCompetitionIds.has(String(comp.id))) {
                         setNotice({
                           severity: 'info',
-                          message: 'Для подачи заявки заполните профиль и завершите регистрацию.',
+                          message: 'Вы уже подали заявку на это соревнование.',
                         });
                         return;
                       }
@@ -847,7 +900,11 @@ function CompetitionsTab({
                     }}
                     color='primary'
                     variant='outlined'
-                    clickable={!deadlinePassed && Boolean(reg?.locked)}
+                    clickable={
+                      !deadlinePassed &&
+                      !applyMutation.isPending &&
+                      !appliedCompetitionIds.has(String(comp.id))
+                    }
                   />
                 ))}
             </Box>

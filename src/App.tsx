@@ -17,7 +17,16 @@ import Login from './pages/Login';
 import UserDashboard from './pages/UserDashboard';
 import UserManagement from './pages/UserManagement';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: 1,
+      staleTime: 30_000,
+    },
+  },
+});
 
 const theme = createTheme({
   palette: {

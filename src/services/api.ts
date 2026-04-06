@@ -238,7 +238,11 @@ export const locationService = {
   },
   getLocationPath: async (locationId: string) => {
     const response = await api.get('/locations/path', { params: { location_id: locationId } });
-    return response.data as { country_id?: string | null; district_id?: string | null; region_id?: string | null };
+    return response.data as {
+      country_id?: string | null;
+      district_id?: string | null;
+      region_id?: string | null;
+    };
   },
 };
 
