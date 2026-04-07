@@ -11,6 +11,7 @@ import {
   MenuItem,
   Paper,
   Select,
+  Snackbar,
   Tab,
   Tabs,
   TextField,
@@ -25,6 +26,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ru';
 import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import api from '../services/api';
@@ -39,6 +41,16 @@ export default function UserDashboard() {
   } | null>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!user) return;
+    const st = location.state as any;
+    if (!st?.registrationSuccess) return;
+    setNotice({ severity: 'success', message: 'Регистрация успешно завершена' });
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, user]);
 
   if (!user) return null;
 
@@ -48,13 +60,21 @@ export default function UserDashboard() {
         Личный кабинет спортсмена
       </Typography>
 
-      {notice ? (
-        <Box mb={2}>
-          <Alert severity={notice.severity} onClose={() => setNotice(null)}>
+      <Snackbar
+        open={Boolean(notice)}
+        autoHideDuration={6000}
+        onClose={() => setNotice(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        key={notice ? `${notice.severity}:${notice.message}` : 'notice'}
+      >
+        {notice ? (
+          <Alert severity={notice.severity} variant='filled' onClose={() => setNotice(null)}>
             {notice.message}
           </Alert>
-        </Box>
-      ) : null}
+        ) : (
+          <span />
+        )}
+      </Snackbar>
 
       <Paper sx={{ mb: 3 }}>
         <Tabs
@@ -306,7 +326,7 @@ function ProfileTab({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard', userId] });
       setShowValidation(false);
-      setNotice({ severity: 'success', message: 'Регистрация завершена!' });
+      setNotice({ severity: 'success', message: 'Регистрация успешно завершена' });
     },
     onError: (err: any) => {
       const msg = err?.message || err?.response?.data?.detail || 'Не удалось сохранить профиль.';
@@ -663,7 +683,7 @@ function ApplicationsTab({
             <Typography>
               Статус:{' '}
               {app.status === 'pending'
-                ? 'заявка на рассмотрении'
+                ? 'заявка подана'
                 : app.status === 'approved'
                   ? 'одобрена'
                   : app.status === 'weighed'
@@ -672,6 +692,12 @@ function ApplicationsTab({
                       ? 'отклонена'
                       : String(app.status || '—')}
             </Typography>
+            <Alert severity='info' sx={{ mt: 1 }}>
+              Ваш электронный паспорт спортсмена будет активирован после верификации поданных вами
+              данных 25 апреля 2026 года перед началом мандатной комиссией на месте проведения
+              соревнования. Стоимость электронного паспорта составляет 1500 рублей и оплата
+              производится на месте.
+            </Alert>
           </Paper>
         </Grid>
       ))}

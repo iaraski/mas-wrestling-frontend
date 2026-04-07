@@ -168,7 +168,7 @@ export default function Login() {
           setLoading(false);
           return;
         }
-        navigate('/');
+        navigate('/', { state: { registrationSuccess: true } });
       } catch (err: any) {
         const msg = err?.response?.data?.detail || err?.message || 'Не удалось подтвердить код.';
         setError(String(msg));
