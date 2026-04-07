@@ -27,7 +27,7 @@ import 'dayjs/locale/ru';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import api, { locationService } from '../services/api';
+import api from '../services/api';
 import { formatCategoryLabel } from '../utils/categoryFormat';
 
 export default function UserDashboard() {
@@ -71,8 +71,8 @@ export default function UserDashboard() {
       </Paper>
 
       {tab === 0 && <ProfileTab userId={user.id} setNotice={setNotice} />}
-      {tab === 1 && <ApplicationsTab setNotice={setNotice} />}
-      {tab === 2 && <CompetitionsTab setNotice={setNotice} />}
+      {tab === 1 && <ApplicationsTab userId={user.id} setNotice={setNotice} />}
+      {tab === 2 && <CompetitionsTab userId={user.id} setNotice={setNotice} />}
     </Container>
   );
 }
@@ -105,76 +105,32 @@ function ProfileTab({
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [showValidation, setShowValidation] = useState(false);
 
-  const { data: reg } = useQuery({
-    queryKey: ['registration', userId],
+  const { data: dashboard, isLoading: dashboardLoading } = useQuery({
+    queryKey: ['dashboard', userId],
     queryFn: async () => {
-      const { data } = await api.get(`/users/me/registration`);
-      return data as { locked: boolean; stage?: string | null };
+      const { data } = await api.get(`/users/me/dashboard`);
+      return data as {
+        registration: { locked: boolean; stage?: string | null };
+        profile: any;
+        athlete: any;
+        details: any;
+        location_path: {
+          country_id?: string | null;
+          district_id?: string | null;
+          region_id?: string | null;
+        } | null;
+      };
     },
     retry: false,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
-  const locked = Boolean(reg?.locked);
-
-  const { data: profile, isLoading: profileLoading } = useQuery({
-    queryKey: ['profile', userId],
-    queryFn: async () => {
-      try {
-        const { data } = await api.get(`/users/me/profile`);
-        return data;
-      } catch {
-        setNotice({ severity: 'error', message: 'Не удалось загрузить профиль.' });
-        return null;
-      }
-    },
-    retry: false,
-  });
-
-  const { data: locationPath } = useQuery({
-    queryKey: ['location_path', profile?.location_id],
-    queryFn: async () => {
-      if (!profile?.location_id) return null;
-      try {
-        return await locationService.getLocationPath(String(profile.location_id));
-      } catch {
-        return null;
-      }
-    },
-    enabled: Boolean(profile?.location_id),
-    retry: false,
-  });
-
-  const { data: athlete } = useQuery({
-    queryKey: ['athlete', userId],
-    queryFn: async () => {
-      try {
-        const { data } = await api.get(`/users/me/athlete`);
-        return data;
-      } catch {
-        setNotice({ severity: 'error', message: 'Не удалось загрузить данные спортсмена.' });
-        return null;
-      }
-    },
-    retry: false,
-  });
-
-  const { data: details } = useQuery({
-    queryKey: ['details', userId],
-    queryFn: async () => {
-      try {
-        const { data } = await api.get(`/users/me/details`);
-        return data as {
-          birth_date?: string | null;
-          rank?: string | null;
-          photo_url?: string | null;
-          gender?: string | null;
-        };
-      } catch {
-        return null;
-      }
-    },
-    retry: false,
-  });
+  const locked = Boolean(dashboard?.registration?.locked);
+  const profile = dashboard?.profile || null;
+  const athlete = dashboard?.athlete || null;
+  const details = dashboard?.details || null;
+  const locationPath = dashboard?.location_path || null;
 
   const { data: countries } = useQuery({
     queryKey: ['locations', 'country'],
@@ -182,6 +138,8 @@ function ProfileTab({
       const { data } = await api.get(`/locations/`, { params: { type: 'country' } });
       return data;
     },
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: districts } = useQuery({
@@ -194,6 +152,8 @@ function ProfileTab({
       return data;
     },
     enabled: !!formData.country_id,
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: regions } = useQuery({
@@ -206,6 +166,8 @@ function ProfileTab({
       return data;
     },
     enabled: !!formData.district_id,
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
@@ -244,31 +206,6 @@ function ProfileTab({
       region_id: locationPath.region_id || prev.region_id,
     }));
   }, [locationPath]);
-
-  useEffect(() => {
-    if (locationPath?.country_id) {
-      queryClient.prefetchQuery({
-        queryKey: ['locations', 'district', locationPath.country_id],
-        queryFn: async () => {
-          const { data } = await api.get(`/locations/`, {
-            params: { type: 'district', parent_id: locationPath.country_id },
-          });
-          return data;
-        },
-      });
-    }
-    if (locationPath?.district_id) {
-      queryClient.prefetchQuery({
-        queryKey: ['locations', 'region', locationPath.district_id],
-        queryFn: async () => {
-          const { data } = await api.get(`/locations/`, {
-            params: { type: 'region', parent_id: locationPath.district_id },
-          });
-          return data;
-        },
-      });
-    }
-  }, [locationPath?.country_id, locationPath?.district_id]);
 
   const validateProfile = (data: typeof formData) => {
     const errors: Partial<Record<keyof typeof formData, string>> = {};
@@ -367,12 +304,7 @@ function ProfileTab({
   const updateProfile = useMutation({
     mutationFn: saveProfile,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile', userId] });
-      queryClient.invalidateQueries({ queryKey: ['athlete', userId] });
-      queryClient.invalidateQueries({ queryKey: ['details', userId] });
-      queryClient.invalidateQueries({ queryKey: ['details_me'] });
-      queryClient.invalidateQueries({ queryKey: ['profile_me'] });
-      queryClient.invalidateQueries({ queryKey: ['athlete_me'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard', userId] });
       setShowValidation(false);
       setNotice({ severity: 'success', message: 'Регистрация завершена!' });
     },
@@ -430,7 +362,7 @@ function ProfileTab({
     };
   }, [formData.photo_url, photoPreviewUrl]);
 
-  if (profileLoading) return <CircularProgress />;
+  if (dashboardLoading) return <CircularProgress />;
 
   return (
     <Paper sx={{ p: { xs: 2, sm: 3 } }}>
@@ -684,14 +616,16 @@ function ProfileTab({
 }
 
 function ApplicationsTab({
+  userId,
   setNotice,
 }: {
+  userId: string;
   setNotice: React.Dispatch<
     React.SetStateAction<{ severity: 'success' | 'error' | 'info'; message: string } | null>
   >;
 }) {
   const { data: applications, isLoading } = useQuery({
-    queryKey: ['my_applications'],
+    queryKey: ['my_applications', userId],
     queryFn: async () => {
       try {
         const { data } = await api.get(`/users/me/applications`);
@@ -702,6 +636,8 @@ function ApplicationsTab({
         return [];
       }
     },
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 
   if (isLoading) return <CircularProgress />;
@@ -744,8 +680,10 @@ function ApplicationsTab({
 }
 
 function CompetitionsTab({
+  userId,
   setNotice,
 }: {
+  userId: string;
   setNotice: React.Dispatch<
     React.SetStateAction<{ severity: 'success' | 'error' | 'info'; message: string } | null>
   >;
@@ -759,28 +697,32 @@ function CompetitionsTab({
       const { data } = await api.get(`/competitions/active`);
       return data;
     },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
+  const cachedDashboard: any = queryClient.getQueryData(['dashboard', userId]);
+  const detailsFromDashboard = cachedDashboard?.details || null;
   const { data: details } = useQuery({
-    queryKey: ['details_me'],
+    queryKey: ['details', userId],
     queryFn: async () => {
-      try {
-        const { data } = await api.get(`/users/me/details`);
-        return data as {
-          birth_date?: string | null;
-          gender?: string | null;
-          rank?: string | null;
-          photo_url?: string | null;
-        };
-      } catch {
-        return null;
-      }
+      const { data } = await api.get(`/users/me/details`);
+      return data as {
+        birth_date?: string | null;
+        gender?: string | null;
+        rank?: string | null;
+        photo_url?: string | null;
+      };
     },
     retry: false,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    enabled: !detailsFromDashboard,
+    initialData: detailsFromDashboard || undefined,
   });
 
   const { data: applications } = useQuery({
-    queryKey: ['my_applications'],
+    queryKey: ['my_applications', userId],
     queryFn: async () => {
       try {
         const { data } = await api.get(`/users/me/applications`);
@@ -790,6 +732,8 @@ function CompetitionsTab({
       }
     },
     retry: false,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 
   const appliedCompetitionIds = new Set<string>(
@@ -803,9 +747,8 @@ function CompetitionsTab({
       await api.post(`/applications/me`, null, { params: { category_id: categoryId } });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my_applications'] });
-      queryClient.invalidateQueries({ queryKey: ['registration'] });
-      queryClient.invalidateQueries({ queryKey: ['registration_me'] });
+      queryClient.invalidateQueries({ queryKey: ['my_applications', userId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard', userId] });
       setNotice({ severity: 'success', message: 'Заявка успешно подана.' });
     },
     onError: (err: any) => {
@@ -851,62 +794,76 @@ function CompetitionsTab({
               </Typography>
             ) : null}
             <Box display='flex' flexWrap='wrap' gap={1}>
-              {comp.categories
-                ?.filter((cat: any) => {
-                  if (!birth || !gender) return false;
-                  if (cat.gender && cat.gender !== gender) return false;
-                  const atDate = comp.start_date ? new Date(comp.start_date) : new Date();
-                  const age = ageAt(birth, atDate);
-                  if (typeof cat.age_min === 'number' && age < cat.age_min) return false;
-                  if (typeof cat.age_max === 'number' && age > cat.age_max) return false;
-                  return true;
-                })
-                .map((cat: any) => (
-                  <Chip
-                    key={cat.id}
-                    label={formatCategoryLabel({
-                      gender: cat.gender,
-                      ageMin: cat.age_min,
-                      ageMax: cat.age_max,
-                      weightMin: cat.weight_min,
-                      weightMax: cat.weight_max,
-                      atDate: comp.start_date,
-                    })}
-                    onClick={() => {
-                      if (deadlinePassed) {
-                        setNotice({
-                          severity: 'info',
-                          message: 'Подача заявок закрыта (после 18 апреля 00:00).',
-                        });
-                        return;
-                      }
-                      if (appliedCompetitionIds.has(String(comp.id))) {
-                        setNotice({
-                          severity: 'info',
-                          message: 'Вы уже подали заявку на это соревнование.',
-                        });
-                        return;
-                      }
-                      if (!birth || !gender) {
-                        setNotice({
-                          severity: 'info',
-                          message: 'Для подачи заявки заполните дату рождения и пол в профиле.',
-                        });
-                        return;
-                      }
-                      if (window.confirm('Подать заявку в эту категорию?')) {
-                        applyMutation.mutate(cat.id);
-                      }
-                    }}
-                    color='primary'
-                    variant='outlined'
-                    clickable={
-                      !deadlinePassed &&
-                      !applyMutation.isPending &&
-                      !appliedCompetitionIds.has(String(comp.id))
+              {Array.from(
+                new Map(
+                  (comp.categories || [])
+                    .filter((cat: any) => {
+                      if (!birth || !gender) return false;
+                      if (cat.gender && cat.gender !== gender) return false;
+                      const atDate = comp.start_date ? new Date(comp.start_date) : new Date();
+                      const age = ageAt(birth, atDate);
+                      if (typeof cat.age_min === 'number' && age < cat.age_min) return false;
+                      if (typeof cat.age_max === 'number' && age > cat.age_max) return false;
+                      return true;
+                    })
+                    .map((cat: any) => {
+                      const label = formatCategoryLabel({
+                        gender: cat.gender,
+                        ageMin: cat.age_min,
+                        ageMax: cat.age_max,
+                        weightMin: cat.weight_min,
+                        weightMax: cat.weight_max,
+                        atDate: comp.start_date,
+                      });
+                      return [label, cat] as const;
+                    }),
+                ).values(),
+              ).map((cat: any) => (
+                <Chip
+                  key={cat.id}
+                  label={formatCategoryLabel({
+                    gender: cat.gender,
+                    ageMin: cat.age_min,
+                    ageMax: cat.age_max,
+                    weightMin: cat.weight_min,
+                    weightMax: cat.weight_max,
+                    atDate: comp.start_date,
+                  })}
+                  onClick={() => {
+                    if (deadlinePassed) {
+                      setNotice({
+                        severity: 'info',
+                        message: 'Подача заявок закрыта (после 18 апреля 00:00).',
+                      });
+                      return;
                     }
-                  />
-                ))}
+                    if (appliedCompetitionIds.has(String(comp.id))) {
+                      setNotice({
+                        severity: 'info',
+                        message: 'Вы уже подали заявку на это соревнование.',
+                      });
+                      return;
+                    }
+                    if (!birth || !gender) {
+                      setNotice({
+                        severity: 'info',
+                        message: 'Для подачи заявки заполните дату рождения и пол в профиле.',
+                      });
+                      return;
+                    }
+                    if (window.confirm('Подать заявку в эту категорию?')) {
+                      applyMutation.mutate(cat.id);
+                    }
+                  }}
+                  color='primary'
+                  variant='outlined'
+                  clickable={
+                    !deadlinePassed &&
+                    !applyMutation.isPending &&
+                    !appliedCompetitionIds.has(String(comp.id))
+                  }
+                />
+              ))}
             </Box>
           </Paper>
         </Grid>

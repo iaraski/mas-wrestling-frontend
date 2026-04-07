@@ -112,10 +112,13 @@ export const applicationService = {
     applicationId: string,
     payload: {
       full_name: string;
+      phone?: string | null;
+      email?: string | null;
       city: string;
       location_id: string;
       coach_name: string;
       birth_date: string;
+      gender?: string | null;
       rank: string;
       photo_url: string;
     },

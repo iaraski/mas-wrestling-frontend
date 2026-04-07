@@ -37,7 +37,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { applicationService, competitionService, userService } from '../services/api';
+import {
+  applicationService,
+  competitionService,
+  locationService,
+  userService,
+} from '../services/api';
 import { formatCategoryLabel } from '../utils/categoryFormat';
 
 type Gender = 'male' | 'female';
@@ -108,12 +113,20 @@ const ApplicationList = () => {
   const [editProfile, setEditProfile] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: '',
+    phone: '',
+    email: '',
     city: '',
     location_id: '',
     coach_name: '',
     birth_date: '',
+    gender: '',
     rank: '',
     photo_url: '',
+  });
+  const [editLocation, setEditLocation] = useState({
+    country_id: '',
+    district_id: '',
+    region_id: '',
   });
 
   const { data: selectedAppDetails, isLoading: isLoadingDetails } = useQuery<any>({
@@ -157,16 +170,64 @@ const ApplicationList = () => {
       setSelectedCategoryId(selectedAppDetails.category_id || '');
       setEditForm({
         full_name: selectedAppDetails.athlete_name || '',
+        phone:
+          selectedAppDetails.athlete_phone && selectedAppDetails.athlete_phone !== 'Не указан'
+            ? String(selectedAppDetails.athlete_phone)
+            : '',
+        email:
+          selectedAppDetails.athlete_email && selectedAppDetails.athlete_email !== 'Не указан'
+            ? String(selectedAppDetails.athlete_email)
+            : '',
         city: selectedAppDetails.athlete_city || '',
         location_id: selectedAppDetails.athlete_location_id || '',
         coach_name: selectedAppDetails.coach_name || '',
         birth_date: selectedAppDetails.passport?.birth_date || '',
+        gender: selectedAppDetails.passport?.gender || '',
         rank: selectedAppDetails.passport?.rank || '',
         photo_url: selectedAppDetails.passport?.photo_url || '',
       });
+      const regionId = selectedAppDetails.athlete_location_id
+        ? String(selectedAppDetails.athlete_location_id)
+        : '';
+      setEditLocation({ country_id: '', district_id: '', region_id: regionId });
+      if (regionId) {
+        locationService
+          .getLocationPath(regionId)
+          .then((p) => {
+            setEditLocation({
+              country_id: p.country_id ? String(p.country_id) : '',
+              district_id: p.district_id ? String(p.district_id) : '',
+              region_id: p.region_id ? String(p.region_id) : regionId,
+            });
+          })
+          .catch(() => null);
+      }
       setEditProfile(false);
     }
   }, [selectedAppDetails, selectedAppId]);
+
+  const { data: countries } = useQuery<any[]>({
+    queryKey: ['locations', 'country'],
+    queryFn: () => locationService.getLocations('country'),
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: districts } = useQuery<any[]>({
+    queryKey: ['locations', 'district', editLocation.country_id],
+    queryFn: () => locationService.getLocations('district', editLocation.country_id),
+    enabled: Boolean(editLocation.country_id),
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: regions } = useQuery<any[]>({
+    queryKey: ['locations', 'region', editLocation.district_id],
+    queryFn: () => locationService.getLocations('region', editLocation.district_id),
+    enabled: Boolean(editLocation.district_id),
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
   const updateApplicationMutation = useMutation({
     mutationFn: ({
@@ -197,10 +258,13 @@ const ApplicationList = () => {
       if (!selectedAppId) throw new Error('Нет заявки');
       if (
         !editForm.full_name ||
+        !editForm.phone ||
+        !editForm.email ||
         !editForm.city ||
         !editForm.location_id ||
         !editForm.coach_name ||
         !editForm.birth_date ||
+        !editForm.gender ||
         !editForm.rank ||
         !editForm.photo_url
       ) {
@@ -208,10 +272,13 @@ const ApplicationList = () => {
       }
       return applicationService.adminUpdateAthleteProfile(selectedAppId, {
         full_name: editForm.full_name,
+        phone: editForm.phone,
+        email: editForm.email,
         city: editForm.city,
         location_id: editForm.location_id,
         coach_name: editForm.coach_name,
         birth_date: editForm.birth_date,
+        gender: editForm.gender,
         rank: editForm.rank,
         photo_url: editForm.photo_url,
       });
@@ -237,10 +304,12 @@ const ApplicationList = () => {
     setEditForm((p) => ({ ...p, photo_url: filePath }));
   };
 
-  const pendingAndRejectedApps =
-    applications?.filter((app) => app.status === 'pending' || app.status === 'rejected') ?? [];
-  const mandateApps =
-    applications?.filter((app) => app.status === 'approved' || app.status === 'weighed') ?? [];
+  const pendingAndRejectedApps = useMemo(() => {
+    return applications?.filter((app) => app.status === 'pending' || app.status === 'rejected') ?? [];
+  }, [applications]);
+  const mandateApps = useMemo(() => {
+    return applications?.filter((app) => app.status === 'approved' || app.status === 'weighed') ?? [];
+  }, [applications]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setCurrentTab(newValue);
@@ -800,17 +869,77 @@ const ApplicationList = () => {
                       fullWidth
                     />
                     <TextField
+                      label='Телефон'
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm((p) => ({ ...p, phone: e.target.value }))}
+                      fullWidth
+                    />
+                    <TextField
+                      label='Email'
+                      value={editForm.email}
+                      onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))}
+                      fullWidth
+                    />
+                    <TextField
                       label='Город'
                       value={editForm.city}
                       onChange={(e) => setEditForm((p) => ({ ...p, city: e.target.value }))}
                       fullWidth
                     />
-                    <TextField
-                      label='Регион (location_id)'
-                      value={editForm.location_id}
-                      onChange={(e) => setEditForm((p) => ({ ...p, location_id: e.target.value }))}
-                      fullWidth
-                    />
+                    <FormControl fullWidth>
+                      <InputLabel>Страна</InputLabel>
+                      <Select
+                        value={editLocation.country_id}
+                        label='Страна'
+                        onChange={(e) => {
+                          const v = String(e.target.value);
+                          setEditLocation({ country_id: v, district_id: '', region_id: '' });
+                          setEditForm((p) => ({ ...p, location_id: '' }));
+                        }}
+                      >
+                        {(countries || []).map((c: any) => (
+                          <MenuItem key={String(c.id)} value={String(c.id)}>
+                            {String(c.name || '')}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl fullWidth disabled={!editLocation.country_id}>
+                      <InputLabel>Округ</InputLabel>
+                      <Select
+                        value={editLocation.district_id}
+                        label='Округ'
+                        onChange={(e) => {
+                          const v = String(e.target.value);
+                          setEditLocation((p) => ({ ...p, district_id: v, region_id: '' }));
+                          setEditForm((p) => ({ ...p, location_id: '' }));
+                        }}
+                      >
+                        {(districts || []).map((d: any) => (
+                          <MenuItem key={String(d.id)} value={String(d.id)}>
+                            {String(d.name || '')}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl fullWidth disabled={!editLocation.district_id}>
+                      <InputLabel>Регион</InputLabel>
+                      <Select
+                        value={editLocation.region_id}
+                        label='Регион'
+                        onChange={(e) => {
+                          const v = String(e.target.value);
+                          setEditLocation((p) => ({ ...p, region_id: v }));
+                          setEditForm((p) => ({ ...p, location_id: v }));
+                        }}
+                      >
+                        {(regions || []).map((r: any) => (
+                          <MenuItem key={String(r.id)} value={String(r.id)}>
+                            {String(r.name || '')}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                     <TextField
                       label='ФИО тренера'
                       value={editForm.coach_name}
@@ -825,6 +954,19 @@ const ApplicationList = () => {
                       onChange={(e) => setEditForm((p) => ({ ...p, birth_date: e.target.value }))}
                       fullWidth
                     />
+                    <FormControl fullWidth>
+                      <InputLabel>Пол</InputLabel>
+                      <Select
+                        value={editForm.gender}
+                        label='Пол'
+                        onChange={(e) =>
+                          setEditForm((p) => ({ ...p, gender: String(e.target.value) }))
+                        }
+                      >
+                        <MenuItem value='male'>Мужской</MenuItem>
+                        <MenuItem value='female'>Женский</MenuItem>
+                      </Select>
+                    </FormControl>
                     <FormControl fullWidth>
                       <InputLabel>Разряд / звание</InputLabel>
                       <Select
@@ -891,50 +1033,55 @@ const ApplicationList = () => {
 
                 <Divider sx={{ my: 2 }} />
 
-                <Typography variant='h6' gutterBottom>
-                  Фото 3×4
-                </Typography>
-                {selectedAppDetails.passport?.photo_url ? (
-                  <Box mt={1} mb={1}>
-                    {!imageLoaded && (
-                      <Skeleton
-                        variant='rectangular'
-                        width='100%'
-                        height={200}
-                        sx={{ borderRadius: '4px' }}
-                      />
+                {!editProfile ? (
+                  <>
+                    <Typography variant='h6' gutterBottom>
+                      Фото 3×4
+                    </Typography>
+                    {selectedAppDetails.passport?.photo_url ? (
+                      <Box mt={1} mb={1}>
+                        {!imageLoaded && (
+                          <Skeleton
+                            variant='rectangular'
+                            width='100%'
+                            height={200}
+                            sx={{ borderRadius: '4px' }}
+                          />
+                        )}
+                        <Box
+                          component='img'
+                          src={
+                            selectedAppDetails.passport.photo_url.startsWith('http')
+                              ? selectedAppDetails.passport.photo_url
+                              : selectedAppDetails.passport.photo_url.includes('documents/')
+                                ? supabase.storage
+                                    .from('avatars')
+                                    .getPublicUrl(selectedAppDetails.passport.photo_url).data
+                                    .publicUrl
+                                : selectedAppDetails.passport.photo_url.startsWith(
+                                      '/applications/photo/',
+                                    )
+                                  ? `${import.meta.env.VITE_API_URL}/api/v1${selectedAppDetails.passport.photo_url}`
+                                  : `${import.meta.env.VITE_API_URL}/api/v1/tg-file/${selectedAppDetails.passport.photo_url}`
+                          }
+                          alt='Фото 3x4'
+                          onLoad={() => setImageLoaded(true)}
+                          onError={() => setImageLoaded(true)}
+                          sx={{
+                            width: '100%',
+                            maxHeight: '300px',
+                            objectFit: 'contain',
+                            display: imageLoaded ? 'block' : 'none',
+                            borderRadius: '4px',
+                            border: '1px solid #eee',
+                          }}
+                        />
+                      </Box>
+                    ) : (
+                      <Typography color='text.secondary'>Фото не загружено</Typography>
                     )}
-                    <Box
-                      component='img'
-                      src={
-                        selectedAppDetails.passport.photo_url.startsWith('http')
-                          ? selectedAppDetails.passport.photo_url
-                          : selectedAppDetails.passport.photo_url.includes('documents/')
-                            ? supabase.storage
-                                .from('avatars')
-                                .getPublicUrl(selectedAppDetails.passport.photo_url).data.publicUrl
-                            : selectedAppDetails.passport.photo_url.startsWith(
-                                  '/applications/photo/',
-                                )
-                              ? `${import.meta.env.VITE_API_URL}/api/v1${selectedAppDetails.passport.photo_url}`
-                              : `${import.meta.env.VITE_API_URL}/api/v1/tg-file/${selectedAppDetails.passport.photo_url}`
-                      }
-                      alt='Фото 3x4'
-                      onLoad={() => setImageLoaded(true)}
-                      onError={() => setImageLoaded(true)}
-                      sx={{
-                        width: '100%',
-                        maxHeight: '300px',
-                        objectFit: 'contain',
-                        display: imageLoaded ? 'block' : 'none',
-                        borderRadius: '4px',
-                        border: '1px solid #eee',
-                      }}
-                    />
-                  </Box>
-                ) : (
-                  <Typography color='text.secondary'>Фото не загружено</Typography>
-                )}
+                  </>
+                ) : null}
               </Box>
 
               <Box flex={1}>
