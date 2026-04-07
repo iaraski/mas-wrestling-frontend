@@ -258,10 +258,13 @@ export const liveService = {
     competitionId: string,
     forceRegenerate = false,
     rebalanceAssignments = false,
+    options?: { active_mats?: number[]; finals_mat?: number | null },
   ) => {
     const response = await api.post(`/live/competitions/${competitionId}/generate`, {
       force_regenerate: forceRegenerate,
       rebalance_assignments: rebalanceAssignments,
+      active_mats: options?.active_mats,
+      finals_mat: options?.finals_mat ?? undefined,
     });
     return response.data;
   },
@@ -302,6 +305,17 @@ export const liveService = {
   stopCompetition: async (competitionId: string, clearAssignments = true) => {
     const response = await api.post(`/live/competitions/${competitionId}/stop`, {
       clear_assignments: clearAssignments,
+    });
+    return response.data;
+  },
+  withdrawAthlete: async (
+    competitionId: string,
+    athleteId: string,
+    reason: 'medical' | 'disciplinary',
+  ) => {
+    const response = await api.post(`/live/competitions/${competitionId}/withdraw`, {
+      athlete_id: athleteId,
+      reason,
     });
     return response.data;
   },

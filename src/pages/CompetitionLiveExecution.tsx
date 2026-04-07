@@ -9,11 +9,24 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   CircularProgress,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
+  FormControl,
+  FormControlLabel,
+  FormLabel,
   Grid,
+  InputLabel,
+  MenuItem,
   Paper,
+  Radio,
+  RadioGroup,
+  Select,
   Tab,
   Tabs,
   Typography,
@@ -72,6 +85,16 @@ export default function CompetitionLiveExecution() {
   const [expandedRoundKeys, setExpandedRoundKeys] = useState<Record<string, boolean>>({});
   const [expandedCategoryKeys, setExpandedCategoryKeys] = useState<Record<string, boolean>>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [generateForce, setGenerateForce] = useState(false);
+  const [generateRebalance, setGenerateRebalance] = useState(false);
+  const [generateFinalsMat, setGenerateFinalsMat] = useState<number | ''>('');
+  const [generateMatsEnabled, setGenerateMatsEnabled] = useState<boolean[]>([]);
+  const [dragCategoryId, setDragCategoryId] = useState<string | null>(null);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawAthleteId, setWithdrawAthleteId] = useState<string | null>(null);
+  const [withdrawAthleteLabel, setWithdrawAthleteLabel] = useState<string>('');
+  const [withdrawReason, setWithdrawReason] = useState<'medical' | 'disciplinary'>('medical');
 
   const liveQuery = useQuery<LiveState>({
     queryKey: ['live_state', compId],
@@ -135,10 +158,18 @@ export default function CompetitionLiveExecution() {
 
   const generateMutation = useMutation({
     mutationFn: async () => {
-      return liveService.generateLiveBouts(compId!, false);
+      const active = generateMatsEnabled
+        .map((v, idx) => (v ? idx + 1 : null))
+        .filter((v): v is number => typeof v === 'number');
+      const finalsMat = generateFinalsMat === '' ? null : Number(generateFinalsMat);
+      return liveService.generateLiveBouts(compId!, generateForce, generateRebalance, {
+        active_mats: active,
+        finals_mat: finalsMat,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      setGenerateOpen(false);
     },
     onError: (err: any) => {
       const msg =
@@ -149,9 +180,9 @@ export default function CompetitionLiveExecution() {
     },
   });
 
-  const rebalanceMutation = useMutation({
-    mutationFn: async () => {
-      return liveService.generateLiveBouts(compId!, true, true);
+  const moveCategoryMutation = useMutation({
+    mutationFn: async ({ categoryId, toMat }: { categoryId: string; toMat: number }) => {
+      return liveService.moveCategory(compId!, categoryId, toMat);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
@@ -160,7 +191,26 @@ export default function CompetitionLiveExecution() {
       const msg =
         err?.response?.data?.detail ||
         err?.response?.data?.message ||
-        'Не удалось перераспределить помосты.';
+        'Не удалось переместить категорию.';
+      setActionError(String(msg));
+    },
+  });
+
+  const withdrawMutation = useMutation({
+    mutationFn: async ({ athleteId, reason }: { athleteId: string; reason: 'medical' | 'disciplinary' }) => {
+      return liveService.withdrawAthlete(compId!, athleteId, reason);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      setWithdrawOpen(false);
+      setWithdrawAthleteId(null);
+      setWithdrawAthleteLabel('');
+    },
+    onError: (err: any) => {
+      const msg =
+        err?.response?.data?.detail ||
+        err?.response?.data?.message ||
+        'Не удалось снять спортсмена с соревнований.';
       setActionError(String(msg));
     },
   });
@@ -252,6 +302,13 @@ export default function CompetitionLiveExecution() {
       setCurrentMat(1);
     }
   }, [currentMat, matsCount]);
+
+  useEffect(() => {
+    setGenerateMatsEnabled((prev) => {
+      if (prev.length === matsCount) return prev;
+      return Array.from({ length: matsCount }, () => true);
+    });
+  }, [matsCount]);
 
   const currentMatState = useMemo(
     () => mats.find((m) => m.mat_number === currentMat) || null,
@@ -358,7 +415,11 @@ export default function CompetitionLiveExecution() {
         <Button
           variant='contained'
           color='warning'
-          onClick={() => generateMutation.mutate()}
+          onClick={() => {
+            setGenerateForce(false);
+            setGenerateRebalance(false);
+            setGenerateOpen(true);
+          }}
           disabled={generateMutation.isPending || hasStarted}
         >
           {generateMutation.isPending ? 'Генерация...' : 'Сгенерировать Live'}
@@ -366,10 +427,14 @@ export default function CompetitionLiveExecution() {
         <Button
           variant='contained'
           color='error'
-          onClick={() => rebalanceMutation.mutate()}
-          disabled={rebalanceMutation.isPending || hasStarted}
+          onClick={() => {
+            setGenerateForce(true);
+            setGenerateRebalance(true);
+            setGenerateOpen(true);
+          }}
+          disabled={generateMutation.isPending || hasStarted}
         >
-          {rebalanceMutation.isPending ? 'Перераспределение...' : 'Перераспределить помосты'}
+          {generateMutation.isPending ? 'Перераспределение...' : 'Перераспределить помосты'}
         </Button>
         <Button
           variant='outlined'
@@ -388,6 +453,134 @@ export default function CompetitionLiveExecution() {
       <Typography variant='h4' gutterBottom>
         Проведение (Live) — {liveQuery.data.competition.name}
       </Typography>
+
+      <Dialog open={generateOpen} onClose={() => setGenerateOpen(false)} maxWidth='sm' fullWidth>
+        <DialogTitle>Генерация Live</DialogTitle>
+        <DialogContent dividers>
+          <Box display='flex' flexDirection='column' gap={2}>
+            <FormControlLabel
+              control={
+                <Checkbox checked={generateForce} onChange={(_, v) => setGenerateForce(v)} />
+              }
+              label='Перегенерировать (удалит текущие поединки)'
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={generateRebalance}
+                  onChange={(_, v) => setGenerateRebalance(v)}
+                />
+              }
+              label='Перераспределить категории по помостам'
+            />
+
+            <FormControl fullWidth>
+              <InputLabel>Помост для финалов/полуфиналов</InputLabel>
+              <Select
+                value={generateFinalsMat}
+                label='Помост для финалов/полуфиналов'
+                onChange={(e) => {
+                  const val = e.target.value === '' ? '' : Number(e.target.value);
+                  setGenerateFinalsMat(val as any);
+                }}
+              >
+                <MenuItem value=''>Не выбран</MenuItem>
+                {Array.from({ length: matsCount }, (_, i) => i + 1).map((m) => (
+                  <MenuItem key={m} value={m}>
+                    Помост {m}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Box>
+              <Typography variant='subtitle2' gutterBottom>
+                Использовать помосты для автоматического распределения
+              </Typography>
+              <Box display='flex' flexWrap='wrap' gap={1}>
+                {Array.from({ length: matsCount }, (_, i) => i + 1).map((m, idx) => {
+                  const finals = generateFinalsMat !== '' && Number(generateFinalsMat) === m;
+                  const checked = Boolean(generateMatsEnabled[idx]) && !finals;
+                  return (
+                    <FormControlLabel
+                      key={m}
+                      control={
+                        <Checkbox
+                          checked={checked}
+                          onChange={(_, v) =>
+                            setGenerateMatsEnabled((prev) => {
+                              const next = [...prev];
+                              next[idx] = v;
+                              return next;
+                            })
+                          }
+                          disabled={finals}
+                        />
+                      }
+                      label={`Помост ${m}`}
+                    />
+                  );
+                })}
+              </Box>
+              <Typography variant='caption' color='textSecondary'>
+                Неиспользуемые помосты останутся пустыми. Категории можно переносить между помостами
+                в любой момент.
+              </Typography>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setGenerateOpen(false)}>Отмена</Button>
+          <Button
+            variant='contained'
+            onClick={() => generateMutation.mutate()}
+            disabled={generateMutation.isPending || hasStarted}
+          >
+            {generateMutation.isPending ? 'Генерация...' : 'Сгенерировать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={withdrawOpen} onClose={() => setWithdrawOpen(false)} maxWidth='xs' fullWidth>
+        <DialogTitle>Снять спортсмена</DialogTitle>
+        <DialogContent dividers>
+          <Box display='flex' flexDirection='column' gap={2}>
+            <Typography variant='subtitle2'>
+              {withdrawAthleteLabel ? withdrawAthleteLabel : 'Выберите спортсмена'}
+            </Typography>
+            <FormControl>
+              <FormLabel>Причина</FormLabel>
+              <RadioGroup
+                value={withdrawReason}
+                onChange={(e) => setWithdrawReason(e.target.value as any)}
+              >
+                <FormControlLabel value='medical' control={<Radio />} label='Медицинские показания' />
+                <FormControlLabel
+                  value='disciplinary'
+                  control={<Radio />}
+                  label='Дисциплинарные причины'
+                />
+              </RadioGroup>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setWithdrawOpen(false)}>Отмена</Button>
+          <Button
+            variant='contained'
+            color='error'
+            onClick={() => {
+              if (!withdrawAthleteId) return;
+              const ok = window.confirm('Снять спортсмена с соревнований? Все его будущие бои будут отменены.');
+              if (!ok) return;
+              withdrawMutation.mutate({ athleteId: withdrawAthleteId, reason: withdrawReason });
+            }}
+            disabled={!withdrawAthleteId || withdrawMutation.isPending}
+          >
+            {withdrawMutation.isPending ? 'Снятие...' : 'Снять'}
+          </Button>
+        </DialogActions>
+      </Dialog>
       {actionError ? (
         <Box mb={2}>
           <Alert severity='warning' onClose={() => setActionError(null)}>
@@ -420,12 +613,62 @@ export default function CompetitionLiveExecution() {
               <Typography variant='h6' gutterBottom>
                 Категории на помосте
               </Typography>
+              <Box display='flex' flexWrap='wrap' gap={1} sx={{ mb: 2 }}>
+                {Array.from({ length: matsCount }, (_, i) => i + 1).map((m) => (
+                  <Box
+                    key={m}
+                    onDragOver={(e) => {
+                      if (!dragCategoryId) return;
+                      e.preventDefault();
+                    }}
+                    onDrop={() => {
+                      if (!dragCategoryId) return;
+                      moveCategoryMutation.mutate({ categoryId: dragCategoryId, toMat: m });
+                      setDragCategoryId(null);
+                    }}
+                  >
+                    <Button
+                      size='small'
+                      variant={m === currentMat ? 'contained' : 'outlined'}
+                      onClick={() => setCurrentMat(m)}
+                    >
+                      Помост {m}
+                    </Button>
+                  </Box>
+                ))}
+              </Box>
               {currentMatState.categories.length === 0 ? (
                 <Typography color='textSecondary'>Пока не назначены.</Typography>
               ) : (
                 currentMatState.categories.map((c, idx) => (
                   <Box key={c.id}>
-                    <Typography>{c.label}</Typography>
+                    <Box
+                      draggable
+                      onDragStart={() => setDragCategoryId(c.id)}
+                      onDragEnd={() => setDragCategoryId(null)}
+                      sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                    >
+                      <Typography sx={{ flex: 1 }}>{c.label}</Typography>
+                      <FormControl size='small' sx={{ minWidth: 120 }}>
+                        <InputLabel>Помост</InputLabel>
+                        <Select
+                          value={currentMat}
+                          label='Помост'
+                          onChange={(e) =>
+                            moveCategoryMutation.mutate({
+                              categoryId: c.id,
+                              toMat: Number(e.target.value),
+                            })
+                          }
+                        >
+                          {Array.from({ length: matsCount }, (_, i) => i + 1).map((m) => (
+                            <MenuItem key={m} value={m}>
+                              {m}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Box>
                     {idx < currentMatState.categories.length - 1 ? (
                       <Divider sx={{ my: 1 }} />
                     ) : null}
@@ -500,6 +743,34 @@ export default function CompetitionLiveExecution() {
                           >
                             Отмена
                           </Button>
+                          <Button
+                            variant='outlined'
+                            color='error'
+                            onClick={() => {
+                              setWithdrawReason('medical');
+                              setWithdrawAthleteId(currentMatState.current_bout!.athlete_red_id);
+                              setWithdrawAthleteLabel(
+                                `Спортсмен: ${currentMatState.current_bout!.athlete_red_name || currentMatState.current_bout!.athlete_red_id}`,
+                              );
+                              setWithdrawOpen(true);
+                            }}
+                          >
+                            Снять (красный)
+                          </Button>
+                          <Button
+                            variant='outlined'
+                            color='error'
+                            onClick={() => {
+                              setWithdrawReason('medical');
+                              setWithdrawAthleteId(currentMatState.current_bout!.athlete_blue_id);
+                              setWithdrawAthleteLabel(
+                                `Спортсмен: ${currentMatState.current_bout!.athlete_blue_name || currentMatState.current_bout!.athlete_blue_id}`,
+                              );
+                              setWithdrawOpen(true);
+                            }}
+                          >
+                            Снять (синий)
+                          </Button>
                         </>
                       ) : null}
                     </Box>
@@ -518,6 +789,36 @@ export default function CompetitionLiveExecution() {
                       Следующий
                     </Typography>
                     <Typography variant='h6'>{boutNames(currentMatState.next_bout)}</Typography>
+                    <Box display='flex' gap={1} mt={2} flexWrap='wrap'>
+                      <Button
+                        variant='outlined'
+                        color='error'
+                        onClick={() => {
+                          setWithdrawReason('medical');
+                          setWithdrawAthleteId(currentMatState.next_bout!.athlete_red_id);
+                          setWithdrawAthleteLabel(
+                            `Спортсмен: ${currentMatState.next_bout!.athlete_red_name || currentMatState.next_bout!.athlete_red_id}`,
+                          );
+                          setWithdrawOpen(true);
+                        }}
+                      >
+                        Снять (красный)
+                      </Button>
+                      <Button
+                        variant='outlined'
+                        color='error'
+                        onClick={() => {
+                          setWithdrawReason('medical');
+                          setWithdrawAthleteId(currentMatState.next_bout!.athlete_blue_id);
+                          setWithdrawAthleteLabel(
+                            `Спортсмен: ${currentMatState.next_bout!.athlete_blue_name || currentMatState.next_bout!.athlete_blue_id}`,
+                          );
+                          setWithdrawOpen(true);
+                        }}
+                      >
+                        Снять (синий)
+                      </Button>
+                    </Box>
                   </CardContent>
                 </Card>
               ) : (
