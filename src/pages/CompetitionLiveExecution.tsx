@@ -90,7 +90,6 @@ export default function CompetitionLiveExecution() {
   const [generateRebalance, setGenerateRebalance] = useState(false);
   const [generateFinalsMat, setGenerateFinalsMat] = useState<number | ''>('');
   const [generateMatsEnabled, setGenerateMatsEnabled] = useState<boolean[]>([]);
-  const [dragCategoryId, setDragCategoryId] = useState<string | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawAthleteId, setWithdrawAthleteId] = useState<string | null>(null);
   const [withdrawAthleteLabel, setWithdrawAthleteLabel] = useState<string>('');
@@ -103,7 +102,7 @@ export default function CompetitionLiveExecution() {
     refetchOnWindowFocus: false,
   });
 
-  const mats = liveQuery.data?.mats || [];
+  const mats = useMemo(() => liveQuery.data?.mats || [], [liveQuery.data?.mats]);
   const matsCount = liveQuery.data?.competition?.mats_count || 1;
   const hasStarted = liveQuery.data?.competition?.has_started || false;
   const hasBouts = liveQuery.data?.competition?.has_bouts || false;
@@ -197,7 +196,13 @@ export default function CompetitionLiveExecution() {
   });
 
   const withdrawMutation = useMutation({
-    mutationFn: async ({ athleteId, reason }: { athleteId: string; reason: 'medical' | 'disciplinary' }) => {
+    mutationFn: async ({
+      athleteId,
+      reason,
+    }: {
+      athleteId: string;
+      reason: 'medical' | 'disciplinary';
+    }) => {
       return liveService.withdrawAthlete(compId!, athleteId, reason);
     },
     onSuccess: () => {
@@ -330,9 +335,13 @@ export default function CompetitionLiveExecution() {
 
   const categoryLabelMap = useMemo(() => {
     const map = new Map<string, string>();
-    currentMatState?.categories.forEach((c) => map.set(c.id, c.label));
+    for (const m of mats) {
+      for (const c of m.categories || []) {
+        map.set(c.id, c.label);
+      }
+    }
     return map;
-  }, [currentMatState]);
+  }, [mats]);
 
   const queueRounds = useMemo(() => {
     if (!currentMatState) return [];
@@ -554,7 +563,11 @@ export default function CompetitionLiveExecution() {
                 value={withdrawReason}
                 onChange={(e) => setWithdrawReason(e.target.value as any)}
               >
-                <FormControlLabel value='medical' control={<Radio />} label='Медицинские показания' />
+                <FormControlLabel
+                  value='medical'
+                  control={<Radio />}
+                  label='Медицинские показания'
+                />
                 <FormControlLabel
                   value='disciplinary'
                   control={<Radio />}
@@ -571,7 +584,9 @@ export default function CompetitionLiveExecution() {
             color='error'
             onClick={() => {
               if (!withdrawAthleteId) return;
-              const ok = window.confirm('Снять спортсмена с соревнований? Все его будущие бои будут отменены.');
+              const ok = window.confirm(
+                'Снять спортсмена с соревнований? Все его будущие бои будут отменены.',
+              );
               if (!ok) return;
               withdrawMutation.mutate({ athleteId: withdrawAthleteId, reason: withdrawReason });
             }}
@@ -613,41 +628,12 @@ export default function CompetitionLiveExecution() {
               <Typography variant='h6' gutterBottom>
                 Категории на помосте
               </Typography>
-              <Box display='flex' flexWrap='wrap' gap={1} sx={{ mb: 2 }}>
-                {Array.from({ length: matsCount }, (_, i) => i + 1).map((m) => (
-                  <Box
-                    key={m}
-                    onDragOver={(e) => {
-                      if (!dragCategoryId) return;
-                      e.preventDefault();
-                    }}
-                    onDrop={() => {
-                      if (!dragCategoryId) return;
-                      moveCategoryMutation.mutate({ categoryId: dragCategoryId, toMat: m });
-                      setDragCategoryId(null);
-                    }}
-                  >
-                    <Button
-                      size='small'
-                      variant={m === currentMat ? 'contained' : 'outlined'}
-                      onClick={() => setCurrentMat(m)}
-                    >
-                      Помост {m}
-                    </Button>
-                  </Box>
-                ))}
-              </Box>
               {currentMatState.categories.length === 0 ? (
                 <Typography color='textSecondary'>Пока не назначены.</Typography>
               ) : (
                 currentMatState.categories.map((c, idx) => (
                   <Box key={c.id}>
-                    <Box
-                      draggable
-                      onDragStart={() => setDragCategoryId(c.id)}
-                      onDragEnd={() => setDragCategoryId(null)}
-                      sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
-                    >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Typography sx={{ flex: 1 }}>{c.label}</Typography>
                       <FormControl size='small' sx={{ minWidth: 120 }}>
                         <InputLabel>Помост</InputLabel>

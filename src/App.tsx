@@ -14,6 +14,7 @@ import CompetitionExecution from './pages/CompetitionExecution';
 import Competitions from './pages/CompetitionList';
 import CompetitionLiveExecution from './pages/CompetitionLiveExecution';
 import Login from './pages/Login';
+import PublicMatQueue from './pages/PublicMatQueue';
 import UserDashboard from './pages/UserDashboard';
 import UserManagement from './pages/UserManagement';
 
@@ -50,6 +51,7 @@ function App() {
             <Routes>
               <Route path='/login' element={<Login />} />
               <Route path='/auth/verified' element={<AuthVerified />} />
+              <Route path='/public/competitions/:compId/queue' element={<PublicMatQueue />} />
 
               <Route element={<ProtectedRoute />}>
                 <Route element={<Layout />}>

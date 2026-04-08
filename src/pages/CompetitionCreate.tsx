@@ -29,8 +29,8 @@ type CompetitionCategoryForm = {
   age_max: number;
   weight_max: number;
   weight_min: number;
-  competition_day: string;
-  mandate_day: string;
+  competition_day: string | null;
+  mandate_day: string | null;
 };
 
 type CategoryGroupForm = {
@@ -150,17 +150,33 @@ const CompetitionCreate = () => {
         secretaries: existingCompetition.secretaries?.map((s: any) => s.user_id) || [],
       });
 
-      // Reconstruct cascaded location IDs based on the fetched region or country
-      if (formScale === 'country') {
-        setSelectedCountryId(formLocationId);
-      } else if (formScale === 'region') {
-        setSelectedRegionId(formLocationId);
+      // Restore cascaded location path using API so dropdowns show correct values
+      if (formLocationId) {
+        locationService
+          .getLocationPath(formLocationId)
+          .then((path) => {
+            if (formScale === 'country') {
+              setSelectedCountryId(path.country_id || formLocationId);
+              setSelectedDistrictId(path.district_id || '');
+              setSelectedRegionId(path.region_id || '');
+            } else if (formScale === 'region') {
+              setSelectedCountryId(path.country_id || '');
+              setSelectedDistrictId(path.district_id || '');
+              setSelectedRegionId(path.region_id || formLocationId);
+            }
+          })
+          .catch(() => {
+            if (formScale === 'country') setSelectedCountryId(formLocationId);
+            if (formScale === 'region') setSelectedRegionId(formLocationId);
+          });
       }
 
       // Group categories back together for the form
       if (existingCompetition.categories) {
         const groupsMap = new Map<string, CategoryGroupForm>();
 
+        // Build groups and map weight string -> id
+        const idsByValueMap = new Map<string, Record<string, string>>();
         existingCompetition.categories.forEach((cat: any) => {
           const compDay = cat.competition_day?.split('T')[0] || '';
           const mandDay = cat.mandate_day?.split('T')[0] || '';
@@ -182,23 +198,24 @@ const CompetitionCreate = () => {
               ? `${Math.floor(cat.weight_min)}+`
               : `${cat.weight_max}`;
 
-          groupsMap.get(key)!.weights.push({
-            id: cat.id,
-            value: weightStr,
-          } as any);
+          const v = groupsMap.get(key)!;
+          (v as any).weights.push({ id: cat.id, value: weightStr });
+          const existing = idsByValueMap.get(key) || {};
+          existing[weightStr] = String(cat.id);
+          idsByValueMap.set(key, existing);
         });
 
         const weightsArray = Array.from(groupsMap.values()).map((g) => {
-          const unique = new Map<string, string>();
-          (g.weights as any[]).forEach((w) => {
+          const map = new Map<string, string>();
+          (g as any).weights.forEach((w: any) => {
             const value = String(w.value || '').trim();
             if (!value) return;
-            if (!unique.has(value)) unique.set(value, String(w.id));
+            if (!map.has(value)) map.set(value, String(w.id));
           });
           return {
             ...g,
-            weights: Array.from(unique.keys()),
-            _ids: Array.from(unique.values()),
+            weights: Array.from(map.keys()),
+            _idsByValue: Object.fromEntries(map.entries()),
           };
         });
 
@@ -254,16 +271,16 @@ const CompetitionCreate = () => {
 
     const finalCategories: CompetitionCategoryForm[] = [];
 
-    data.category_groups.forEach((group) => {
+    data.category_groups.forEach((group: any) => {
       // Separate normal weights and "plus" weights (like "100+")
       const normalWeights: number[] = [];
       const plusWeights: number[] = [];
 
-      (group.weights || []).forEach((wStr) => {
+      (group.weights || []).forEach((wStr: string) => {
         // Handle comma-separated values if they were pasted or entered as one string
         const splitWeights = wStr.includes(',') ? wStr.split(',') : [wStr];
 
-        splitWeights.forEach((val) => {
+        splitWeights.forEach((val: string) => {
           const cleanVal = val.trim();
           if (!cleanVal) return;
 
@@ -283,17 +300,20 @@ const CompetitionCreate = () => {
       let prevWeight = 0;
 
       // Convert dates to ISO strings if they are set
+      // Preserve empty dates as null to avoid ложных дублей на бэке
       const compDayIso = group.competition_day
         ? new Date(group.competition_day).toISOString()
-        : new Date().toISOString();
-      const mandateDayIso = group.mandate_day
-        ? new Date(group.mandate_day).toISOString()
-        : new Date().toISOString();
+        : null;
+      const mandateDayIso = group.mandate_day ? new Date(group.mandate_day).toISOString() : null;
+
+      // Map value -> id from edit mode reconstruction
+      const idsByValue: Record<string, string> = group._idsByValue || {};
 
       // Create categories for normal weights
-      normalWeights.forEach((w, index) => {
+      normalWeights.forEach((w) => {
+        const id = idsByValue[String(w)] || undefined;
         finalCategories.push({
-          id: (group as any)._ids ? (group as any)._ids[index] : undefined,
+          id,
           gender: group.gender,
           age_min: Number(group.age_min),
           age_max: Number(group.age_max),
@@ -306,9 +326,10 @@ const CompetitionCreate = () => {
       });
 
       // Handle "plus" weights
-      plusWeights.forEach((plusW, index) => {
+      plusWeights.forEach((plusW) => {
+        const id = idsByValue[`${plusW}+`] || undefined;
         finalCategories.push({
-          id: (group as any)._ids ? (group as any)._ids[normalWeights.length + index] : undefined,
+          id,
           gender: group.gender,
           age_min: Number(group.age_min),
           age_max: Number(group.age_max),
