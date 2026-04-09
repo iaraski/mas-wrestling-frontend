@@ -1,4 +1,14 @@
-import { Alert, Box, Button, Container, Paper, Tab, Tabs, TextField } from '@mui/material';
+import {
+  Alert,
+  Box,
+  Button,
+  Container,
+  Paper,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -188,6 +198,12 @@ export default function Login() {
           alignItems: 'center',
         }}
       >
+        <Box sx={{ width: '100%', mb: 2, textAlign: 'center' }}>
+          <Typography variant='h6'>Добро пожаловать на платформу</Typography>
+          <Typography variant='h5' sx={{ fontWeight: 800 }}>
+            “MAS-WRESTLING ONLINE”
+          </Typography>
+        </Box>
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
           <Tabs
             value={tab}
@@ -211,6 +227,13 @@ export default function Login() {
             <Tab label='Вход' />
             <Tab label='Регистрация' />
           </Tabs>
+
+          {tab === 1 ? (
+            <Typography variant='body2' color='text.secondary' sx={{ mb: 2 }}>
+              Для подачи заявки на участие в первенстве России по мас-рестлингу пожалуйста пройдите
+              регистрацию, заполнив данные, и подайте заявку.
+            </Typography>
+          ) : null}
 
           {error && (
             <Alert severity='error' sx={{ mb: 2 }}>
