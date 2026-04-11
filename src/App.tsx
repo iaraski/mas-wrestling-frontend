@@ -6,6 +6,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import Applications from './pages/ApplicationList';
 import AthleteDirectory from './pages/AthleteDirectory';
+import AuthResetPassword from './pages/AuthResetPassword';
 import AuthVerified from './pages/AuthVerified';
 import BracketView from './pages/BracketView';
 import CompetitionCreate from './pages/CompetitionCreate';
@@ -51,6 +52,7 @@ function App() {
             <Routes>
               <Route path='/login' element={<Login />} />
               <Route path='/auth/verified' element={<AuthVerified />} />
+              <Route path='/auth/reset' element={<AuthResetPassword />} />
               <Route path='/public/competitions/:compId/queue' element={<PublicMatQueue />} />
 
               <Route element={<ProtectedRoute />}>

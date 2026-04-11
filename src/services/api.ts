@@ -6,6 +6,11 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
+  const token = localStorage.getItem('auth_access_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+    return config;
+  }
   const {
     data: { session },
   } = await supabase.auth.getSession();

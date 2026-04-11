@@ -48,7 +48,11 @@ export default function UserDashboard() {
     if (!user) return;
     const st = location.state as any;
     if (!st?.registrationSuccess) return;
-    setNotice({ severity: 'success', message: 'Регистрация успешно завершена' });
+    setNotice({
+      severity: 'info',
+      message:
+        'Для участия в соревнованиях заполните профиль и подайте заявку на соревнования в разделе «Соревнования».',
+    });
     navigate(location.pathname, { replace: true, state: null });
   }, [location.pathname, location.state, navigate, user]);
 
@@ -323,7 +327,15 @@ function ProfileTab({
 
   const updateProfile = useMutation({
     mutationFn: saveProfile,
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      queryClient.setQueryData(['details', userId], (prev: any) => ({
+        ...(prev || {}),
+        birth_date: variables.birth_date || null,
+        gender: variables.gender || null,
+        rank: variables.rank || null,
+        photo_url: variables.photo_url || null,
+      }));
+      queryClient.invalidateQueries({ queryKey: ['details', userId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard', userId] });
       setShowValidation(false);
       setNotice({ severity: 'success', message: 'Регистрация успешно завершена' });
@@ -366,6 +378,17 @@ function ProfileTab({
         return;
       }
       if (photoPreviewUrl) return;
+      if (/^https?:\/\//i.test(formData.photo_url)) {
+        setPhotoSignedUrl(formData.photo_url);
+        return;
+      }
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        setPhotoSignedUrl(null);
+        return;
+      }
       const { data, error } = await supabase.storage
         .from('avatars')
         .createSignedUrl(formData.photo_url, 60 * 60);
@@ -604,7 +627,10 @@ function ProfileTab({
                 src={
                   photoPreviewUrl ||
                   photoSignedUrl ||
-                  supabase.storage.from('avatars').getPublicUrl(formData.photo_url).data.publicUrl
+                  (/^https?:\/\//i.test(formData.photo_url)
+                    ? formData.photo_url
+                    : supabase.storage.from('avatars').getPublicUrl(formData.photo_url).data
+                        .publicUrl)
                 }
                 alt='Фото 3x4'
                 style={{ width: '100%', maxHeight: '240px', objectFit: 'contain' }}

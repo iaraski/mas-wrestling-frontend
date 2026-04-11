@@ -1,44 +1,53 @@
-import type { Session, User } from '@supabase/supabase-js';
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import api from '../services/api';
+
+type AuthUser = {
+  id: string;
+  email?: string | null;
+};
 
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
+  user: AuthUser | null;
+  accessToken: string | null;
   role: string | null;
   loading: boolean;
+  setAuthToken: (token: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  session: null,
+  accessToken: null,
   role: null,
   loading: true,
+  setAuthToken: async () => {},
+  signIn: async () => {},
   signOut: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const roleFetchInFlight = useRef<Promise<void> | null>(null);
   const roleFetchToken = useRef<string | null>(null);
 
-  const fetchUserRole = async (accessToken: string) => {
-    if (roleFetchInFlight.current && roleFetchToken.current === accessToken) {
+  const fetchUserRole = useCallback(async (token: string) => {
+    if (roleFetchInFlight.current && roleFetchToken.current === token) {
       return roleFetchInFlight.current;
     }
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 15000);
 
-    roleFetchToken.current = accessToken;
+    roleFetchToken.current = token;
     roleFetchInFlight.current = (async () => {
       try {
         const resp = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/auth/me`, {
           headers: {
-            Authorization: `Bearer ${accessToken}`,
+            Authorization: `Bearer ${token}`,
           },
           signal: controller.signal,
         });
@@ -48,7 +57,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         const me = await resp.json();
-        console.log('Role from /auth/me:', me.role);
+        if (me?.user_id) {
+          setUser({ id: String(me.user_id), email: me.email ? String(me.email) : null });
+        }
         const resolvedRole = me.role || 'athlete';
         setRole(resolvedRole);
         try {
@@ -70,27 +81,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     })();
 
     return roleFetchInFlight.current;
-  };
+  }, []);
+
+  const setAuthToken = useCallback(
+    async (token: string) => {
+    localStorage.setItem('auth_access_token', token);
+    setAccessToken(token);
+    try {
+      const cached = localStorage.getItem('last_role');
+      if (cached) setRole(cached);
+    } catch (e) {
+      void e;
+    }
+    await fetchUserRole(token);
+    },
+    [fetchUserRole],
+  );
 
   useEffect(() => {
     const init = async () => {
       setLoading(true);
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.access_token) {
-          try {
-            const cached = localStorage.getItem('last_role');
-            if (cached) setRole(cached);
-          } catch (e) {
-            void e;
-          }
-          void fetchUserRole(session.access_token);
+        const token = localStorage.getItem('auth_access_token');
+        if (token) {
+          await setAuthToken(token);
         } else {
-          setRole(null);
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          const supaToken = session?.access_token || null;
+          setAccessToken(supaToken);
+          if (supaToken) {
+            void fetchUserRole(supaToken);
+          } else {
+            setRole(null);
+            setUser(null);
+          }
         }
       } finally {
         setLoading(false);
@@ -99,39 +125,55 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     void init();
 
-    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setLoading(true);
-      try {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.access_token) {
-          try {
-            const cached = localStorage.getItem('last_role');
-            if (cached) setRole(cached);
-          } catch (e) {
-            void e;
-          }
-          void fetchUserRole(session.access_token);
-        } else {
-          setRole(null);
-        }
-      } finally {
-        setLoading(false);
+      const local = localStorage.getItem('auth_access_token');
+      if (local) return;
+      const supaToken = session?.access_token || null;
+      setAccessToken(supaToken);
+      if (supaToken) {
+        void fetchUserRole(supaToken);
+      } else {
+        setRole(null);
+        setUser(null);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [fetchUserRole, setAuthToken]);
+
+  const signIn = async (email: string, password: string) => {
+    const resp = await api.post('/auth/login', { email, password });
+    const token = String(resp.data?.access_token || '');
+    if (!token) {
+      throw new Error('No access token');
+    }
+    await setAuthToken(token);
+    const meRole = resp.data?.role ? String(resp.data.role) : null;
+    if (meRole) {
+      setRole(meRole);
+      localStorage.setItem('last_role', meRole);
+    }
+    setUser({
+      id: String(resp.data?.user_id || ''),
+      email: resp.data?.email ? String(resp.data.email) : null,
+    });
+  };
 
   const signOut = async () => {
+    localStorage.removeItem('auth_access_token');
+    localStorage.removeItem('last_role');
     await supabase.auth.signOut();
+    setAccessToken(null);
+    setUser(null);
+    setRole(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, role, loading, signOut }}>
+    <AuthContext.Provider
+      value={{ user, accessToken, role, loading, setAuthToken, signIn, signOut }}
+    >
       {children}
     </AuthContext.Provider>
   );
