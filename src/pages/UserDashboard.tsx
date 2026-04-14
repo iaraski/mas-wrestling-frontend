@@ -815,7 +815,11 @@ function CompetitionsTab({
   });
 
   if (isLoading) return <CircularProgress />;
-  if (!competitions?.length) return <Typography>Нет активных соревнований.</Typography>;
+  const visibleCompetitions = (competitions || []).filter((comp: any) => {
+    const name = String(comp?.name || '');
+    return !name.toUpperCase().includes('[TEST]');
+  });
+  if (!visibleCompetitions.length) return <Typography>Нет активных соревнований.</Typography>;
 
   const birth = details?.birth_date ? new Date(details.birth_date) : null;
   const gender = details?.gender || null;
@@ -828,7 +832,7 @@ function CompetitionsTab({
 
   return (
     <Grid container spacing={2}>
-      {competitions.map((comp: any) => (
+      {visibleCompetitions.map((comp: any) => (
         <Grid item xs={12} key={comp.id}>
           <Paper sx={{ p: 2 }}>
             <Typography variant='h6'>{comp.name}</Typography>
