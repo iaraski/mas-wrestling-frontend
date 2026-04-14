@@ -71,10 +71,15 @@ type CompetitionDetails = {
 };
 
 const ageAt = (birthDate: Date, atDate: Date) => {
-  let age = atDate.getFullYear() - birthDate.getFullYear();
-  const m = atDate.getMonth() - birthDate.getMonth();
-  if (m < 0 || (m === 0 && atDate.getDate() < birthDate.getDate())) age -= 1;
-  return age;
+  const year = Number.isFinite(atDate.getTime()) ? atDate.getFullYear() : new Date().getFullYear();
+  return year - birthDate.getFullYear();
+};
+
+const normalizeGender = (g: unknown) => {
+  const s = String(g ?? '').trim().toLowerCase();
+  if (s === 'male' || s === 'm' || s === 'м') return 'male';
+  if (s === 'female' || s === 'f' || s === 'ж') return 'female';
+  return s;
 };
 
 export default function AthleteDirectory() {
@@ -162,7 +167,7 @@ export default function AthleteDirectory() {
     const at = competitionDetails.start_date ? new Date(competitionDetails.start_date) : new Date();
     const a = ageAt(birth, at);
     return competitionDetails.categories.filter((c) => {
-      if (c.gender !== selectedAthlete.gender) return false;
+      if (normalizeGender(c.gender) !== normalizeGender(selectedAthlete.gender)) return false;
       if (a < c.age_min || a > c.age_max) return false;
       return true;
     });

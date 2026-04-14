@@ -823,11 +823,19 @@ function CompetitionsTab({
 
   const birth = details?.birth_date ? new Date(details.birth_date) : null;
   const gender = details?.gender || null;
+  const normalizeGender = (g: unknown) => {
+    const s = String(g ?? '')
+      .trim()
+      .toLowerCase();
+    if (s === 'male' || s === 'm' || s === 'м') return 'male';
+    if (s === 'female' || s === 'f' || s === 'ж') return 'female';
+    return s;
+  };
   const ageAt = (birthDate: Date, atDate: Date) => {
-    let age = atDate.getFullYear() - birthDate.getFullYear();
-    const m = atDate.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && atDate.getDate() < birthDate.getDate())) age -= 1;
-    return age;
+    const year = Number.isFinite(atDate.getTime())
+      ? atDate.getFullYear()
+      : new Date().getFullYear();
+    return year - birthDate.getFullYear();
   };
 
   return (
@@ -855,7 +863,8 @@ function CompetitionsTab({
                   (comp.categories || [])
                     .filter((cat: any) => {
                       if (!birth || !gender) return false;
-                      if (cat.gender && cat.gender !== gender) return false;
+                      if (cat.gender && normalizeGender(cat.gender) !== normalizeGender(gender))
+                        return false;
                       const atDate = comp.start_date ? new Date(comp.start_date) : new Date();
                       const age = ageAt(birth, atDate);
                       if (typeof cat.age_min === 'number' && age < cat.age_min) return false;
