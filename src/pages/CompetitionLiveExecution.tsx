@@ -22,6 +22,9 @@ import {
   FormLabel,
   Grid,
   InputLabel,
+  List,
+  ListItem,
+  ListItemText,
   MenuItem,
   Paper,
   Radio,
@@ -73,14 +76,57 @@ type LiveState = {
     mats_count: number;
     has_bouts: boolean;
     has_started: boolean;
+    is_finished?: boolean;
+    total_bouts?: number;
+    done_bouts?: number;
+    remaining_bouts?: number;
+    results_path?: string;
   };
   mats: LiveMat[];
+};
+
+type GenerateLiveResponse = {
+  status: string;
+  competition_id: string;
+  mats_count: number;
+  categories: number;
+  bouts_created: number;
+  generated_at: string;
+};
+
+type CompetitionResults = {
+  competition: {
+    id: string;
+    name: string;
+    is_finished: boolean;
+  };
+  totals: {
+    total_bouts: number;
+    done_bouts: number;
+    remaining_bouts: number;
+  };
+  champions: Array<{
+    category_id: string;
+    category_label: string;
+    athlete_id: string;
+    name: string;
+  }>;
+  categories: Array<{
+    category_id: string;
+    label: string;
+    bracket_type: string | null;
+    total_bouts: number;
+    done_bouts: number;
+    is_finished: boolean;
+    winners: Array<{ place: number; athlete_id: string; name: string }>;
+  }>;
 };
 
 export default function CompetitionLiveExecution() {
   const { compId } = useParams<{ compId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [forceLiveView, setForceLiveView] = useState(false);
   const [currentMat, setCurrentMat] = useState(1);
   const [expandedRoundKeys, setExpandedRoundKeys] = useState<Record<string, boolean>>({});
   const [expandedCategoryKeys, setExpandedCategoryKeys] = useState<Record<string, boolean>>({});
@@ -106,6 +152,14 @@ export default function CompetitionLiveExecution() {
   const matsCount = liveQuery.data?.competition?.mats_count || 1;
   const hasStarted = liveQuery.data?.competition?.has_started || false;
   const hasBouts = liveQuery.data?.competition?.has_bouts || false;
+  const isFinished = liveQuery.data?.competition?.is_finished || false;
+
+  const resultsQuery = useQuery<CompetitionResults>({
+    queryKey: ['competition_results', compId],
+    queryFn: () => liveService.getCompetitionResults(compId!),
+    enabled: !!compId && isFinished,
+    refetchOnWindowFocus: false,
+  });
 
   useEffect(() => {
     if (!compId) return;
@@ -156,7 +210,7 @@ export default function CompetitionLiveExecution() {
   }, [compId, queryClient]);
 
   const generateMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<GenerateLiveResponse> => {
       const active = generateMatsEnabled
         .map((v, idx) => (v ? idx + 1 : null))
         .filter((v): v is number => typeof v === 'number');
@@ -166,9 +220,14 @@ export default function CompetitionLiveExecution() {
         finals_mat: finalsMat,
       });
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
       setGenerateOpen(false);
+      if (!data?.bouts_created) {
+        setActionError(
+          'Live сгенерирован, но поединки не созданы. Проверь, что участники имеют статус «Взвешен» (weighed) и в категории минимум 2 спортсмена.',
+        );
+      }
     },
     onError: (err: any) => {
       const msg =
@@ -320,9 +379,14 @@ export default function CompetitionLiveExecution() {
     [mats, currentMat],
   );
 
+  const isByeBout = (bout: LiveBout) =>
+    bout.athlete_red_id === bout.athlete_blue_id &&
+    (bout.stage === 'bye' || Boolean(bout.stage && bout.stage.startsWith('bye')));
+
   const boutNames = (bout: LiveBout) => {
     const a = bout.athlete_red_name || bout.athlete_red_id;
     const b = bout.athlete_blue_name || bout.athlete_blue_id;
+    if (isByeBout(bout)) return `${a}`;
     return `${a} vs ${b}`;
   };
 
@@ -343,12 +407,36 @@ export default function CompetitionLiveExecution() {
     return map;
   }, [mats]);
 
+  const getBoutContext = (bout: LiveBout) => {
+    const catLabel = categoryLabelMap.get(bout.category_id) || '';
+    const parts = [catLabel, `Круг ${bout.round_index}`];
+    if (bout.bracket_type === 'double_elim') {
+      const s = (bout.stage || '').toLowerCase();
+      if (s === 'wb' || s.startsWith('bye_wb') || s === 'bye') {
+        parts.push('Группа А');
+      } else if (s.startsWith('lb') || s.startsWith('bye_lb')) {
+        parts.push('Группа Б');
+      } else if (s.startsWith('final') || s === 'semifinal') {
+        parts.push('Финалы');
+      }
+    }
+    return parts.filter(Boolean).join(' • ');
+  };
+
   const queueRounds = useMemo(() => {
     if (!currentMatState) return [];
     const queue = currentMatState.queue.filter(
-      (b) => b.status !== 'done' && b.status !== 'cancelled',
+      (b) => b.status !== 'cancelled' && (b.status !== 'done' || isByeBout(b)),
     );
-    const sorted = [...queue].sort((a, b) => (a.order_in_mat || 0) - (b.order_in_mat || 0));
+    const sorted = [...queue].sort((a, b) => {
+      const ra = a.round_index || 0;
+      const rb = b.round_index || 0;
+      if (ra !== rb) return ra - rb;
+      const ba = isByeBout(a) ? 1 : 0;
+      const bb = isByeBout(b) ? 1 : 0;
+      if (ba !== bb) return ba - bb;
+      return (a.order_in_mat || 0) - (b.order_in_mat || 0);
+    });
 
     const roundMap = new Map<
       string,
@@ -415,21 +503,142 @@ export default function CompetitionLiveExecution() {
     );
   }
 
+  if (isFinished && !forceLiveView) {
+    if (resultsQuery.isLoading) {
+      return (
+        <Container maxWidth='lg' sx={{ mt: 4, mb: 4 }}>
+          <Box display='flex' justifyContent='center' mt={4}>
+            <CircularProgress />
+          </Box>
+        </Container>
+      );
+    }
+
+    if (resultsQuery.isError || !resultsQuery.data) {
+      return (
+        <Container maxWidth='lg' sx={{ mt: 4, mb: 4 }}>
+          <Box display='flex' justifyContent='space-between' alignItems='center' mb={2} gap={2}>
+            <Button
+              startIcon={<ArrowBackIcon />}
+              onClick={() => navigate(`/competitions/${compId}`)}
+            >
+              Назад
+            </Button>
+            <Button variant='outlined' onClick={() => resultsQuery.refetch()}>
+              Обновить
+            </Button>
+          </Box>
+          <Typography color='error'>Не удалось загрузить итоги соревнования.</Typography>
+        </Container>
+      );
+    }
+
+    const results = resultsQuery.data;
+    const champions = results.champions || [];
+    const finishedCategories = (results.categories || []).filter((c) => c.is_finished);
+
+    return (
+      <Container maxWidth='lg' sx={{ mt: 4, mb: 4 }}>
+        <Box display='flex' justifyContent='space-between' alignItems='center' mb={2} gap={2}>
+          <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(`/competitions/${compId}`)}>
+            Назад
+          </Button>
+          <Button variant='contained' onClick={() => setForceLiveView(true)}>
+            Вернуться в Live
+          </Button>
+          <Button variant='outlined' onClick={() => resultsQuery.refetch()}>
+            Обновить
+          </Button>
+        </Box>
+
+        <Typography variant='h4' gutterBottom>
+          Итоги — {results.competition.name}
+        </Typography>
+
+        <Typography variant='subtitle2' color='textSecondary' gutterBottom>
+          Поединков: {results.totals.done_bouts}/{results.totals.total_bouts}
+        </Typography>
+
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant='h6' gutterBottom>
+                Победители (общий список)
+              </Typography>
+              {champions.length === 0 ? (
+                <Typography color='textSecondary'>Нет данных.</Typography>
+              ) : (
+                <List dense>
+                  {champions.map((c) => (
+                    <ListItem key={`${c.category_id}:${c.athlete_id}`} disableGutters>
+                      <ListItemText
+                        primary={c.name || '—'}
+                        secondary={c.category_label || c.category_id}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant='h6' gutterBottom>
+                Призёры по категориям
+              </Typography>
+              {finishedCategories.length === 0 ? (
+                <Typography color='textSecondary'>Нет завершённых категорий.</Typography>
+              ) : (
+                <Box display='flex' flexDirection='column' gap={2}>
+                  {finishedCategories.map((cat) => (
+                    <Box key={cat.category_id}>
+                      <Typography variant='subtitle1'>{cat.label || cat.category_id}</Typography>
+                      {cat.winners?.length ? (
+                        <List dense>
+                          {cat.winners.map((w) => (
+                            <ListItem
+                              key={`${cat.category_id}:${w.place}:${w.athlete_id}`}
+                              disableGutters
+                            >
+                              <ListItemText primary={`${w.place}. ${w.name || '—'}`} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      ) : (
+                        <Typography color='textSecondary'>Нет данных.</Typography>
+                      )}
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Paper>
+          </Grid>
+        </Grid>
+      </Container>
+    );
+  }
+
   return (
     <Container maxWidth='lg' sx={{ mt: 4, mb: 4 }}>
       <Box display='flex' justifyContent='space-between' alignItems='center' mb={2} gap={2}>
         <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(`/competitions/${compId}`)}>
           Назад
         </Button>
+        {isFinished ? (
+          <Button variant='outlined' onClick={() => setForceLiveView(false)}>
+            Показать итоги
+          </Button>
+        ) : null}
         <Button
           variant='contained'
           color='warning'
           onClick={() => {
-            setGenerateForce(false);
+            setGenerateForce(hasStarted);
             setGenerateRebalance(false);
             setGenerateOpen(true);
           }}
-          disabled={generateMutation.isPending || hasStarted}
+          disabled={generateMutation.isPending}
         >
           {generateMutation.isPending ? 'Генерация...' : 'Сгенерировать Live'}
         </Button>
@@ -441,7 +650,7 @@ export default function CompetitionLiveExecution() {
             setGenerateRebalance(true);
             setGenerateOpen(true);
           }}
-          disabled={generateMutation.isPending || hasStarted}
+          disabled={generateMutation.isPending}
         >
           {generateMutation.isPending ? 'Перераспределение...' : 'Перераспределить помосты'}
         </Button>
@@ -467,6 +676,12 @@ export default function CompetitionLiveExecution() {
         <DialogTitle>Генерация Live</DialogTitle>
         <DialogContent dividers>
           <Box display='flex' flexDirection='column' gap={2}>
+            {hasStarted ? (
+              <Alert severity='warning'>
+                Соревнование уже начато. Для пересоздания поединков нужно включить
+                «Перегенерировать».
+              </Alert>
+            ) : null}
             <FormControlLabel
               control={
                 <Checkbox checked={generateForce} onChange={(_, v) => setGenerateForce(v)} />
@@ -543,7 +758,7 @@ export default function CompetitionLiveExecution() {
           <Button
             variant='contained'
             onClick={() => generateMutation.mutate()}
-            disabled={generateMutation.isPending || hasStarted}
+            disabled={generateMutation.isPending || (hasStarted && !generateForce)}
           >
             {generateMutation.isPending ? 'Генерация...' : 'Сгенерировать'}
           </Button>
@@ -674,7 +889,7 @@ export default function CompetitionLiveExecution() {
                 <Card sx={{ mb: 2, borderLeft: '4px solid #4caf50' }}>
                   <CardContent>
                     <Typography variant='subtitle2' color='textSecondary'>
-                      Сейчас
+                      Сейчас • {getBoutContext(currentMatState.current_bout)}
                     </Typography>
                     <Typography variant='h6'>{boutNames(currentMatState.current_bout)}</Typography>
                     <Typography variant='subtitle2' color='textSecondary'>
@@ -772,10 +987,19 @@ export default function CompetitionLiveExecution() {
                 <Card sx={{ mb: 2, borderLeft: '4px solid #2196f3' }}>
                   <CardContent>
                     <Typography variant='subtitle2' color='textSecondary'>
-                      Следующий
+                      Следующий • {getBoutContext(currentMatState.next_bout)}
                     </Typography>
                     <Typography variant='h6'>{boutNames(currentMatState.next_bout)}</Typography>
                     <Box display='flex' gap={1} mt={2} flexWrap='wrap'>
+                      {!currentMatState.current_bout ? (
+                        <Button
+                          variant='contained'
+                          onClick={() => startMutation.mutate(currentMatState.next_bout!.id)}
+                          disabled={startMutation.isPending}
+                        >
+                          Начать
+                        </Button>
+                      ) : null}
                       <Button
                         variant='outlined'
                         color='error'
@@ -871,19 +1095,34 @@ export default function CompetitionLiveExecution() {
                                   <Typography variant='subtitle2'>{catLabel}</Typography>
                                 </AccordionSummary>
                                 <AccordionDetails>
-                                  {bouts.map((b) => (
-                                    <Box
-                                      key={b.id}
-                                      display='flex'
-                                      justifyContent='space-between'
-                                      py={0.75}
-                                    >
-                                      <Typography sx={{ pr: 1 }}>{boutNames(b)}</Typography>
-                                      <Typography variant='caption' color='textSecondary'>
-                                        {b.status}
-                                      </Typography>
-                                    </Box>
-                                  ))}
+                                  {bouts.map((b) => {
+                                    const grp =
+                                      b.bracket_type === 'double_elim'
+                                        ? (b.stage || '').toLowerCase()
+                                        : '';
+                                    let grpLabel = '';
+                                    if (grp === 'wb' || grp.startsWith('bye_wb') || grp === 'bye')
+                                      grpLabel = 'Группа А';
+                                    else if (grp.startsWith('lb') || grp.startsWith('bye_lb'))
+                                      grpLabel = 'Группа Б';
+                                    else if (grp.startsWith('final') || grp === 'semifinal')
+                                      grpLabel = 'Финалы';
+
+                                    return (
+                                      <Box
+                                        key={b.id}
+                                        display='flex'
+                                        justifyContent='space-between'
+                                        py={0.75}
+                                      >
+                                        <Typography sx={{ pr: 1 }}>{boutNames(b)}</Typography>
+                                        <Typography variant='caption' color='textSecondary'>
+                                          {grpLabel ? `${grpLabel} • ` : ''}
+                                          {isByeBout(b) ? 'свободен' : b.status}
+                                        </Typography>
+                                      </Box>
+                                    );
+                                  })}
                                 </AccordionDetails>
                               </Accordion>
                             );
@@ -901,46 +1140,49 @@ export default function CompetitionLiveExecution() {
               {!currentMatState.history || currentMatState.history.length === 0 ? (
                 <Typography color='textSecondary'>Пока пусто.</Typography>
               ) : (
-                currentMatState.history.slice(0, 20).map((b) => {
-                  const winner =
-                    b.winner_athlete_id === b.athlete_red_id
-                      ? b.athlete_red_name || b.athlete_red_id
-                      : b.athlete_blue_name || b.athlete_blue_id;
-                  const score =
-                    b.red_wins !== undefined && b.blue_wins !== undefined
-                      ? ` • счёт ${b.red_wins}:${b.blue_wins}`
-                      : '';
-                  return (
-                    <Box
-                      key={`hist-${b.id}`}
-                      display='flex'
-                      justifyContent='space-between'
-                      py={0.75}
-                    >
-                      <Typography sx={{ pr: 1 }}>{boutNames(b)}</Typography>
-                      <Box display='flex' alignItems='center' gap={1}>
-                        <Typography variant='caption' color='textSecondary'>
-                          Победитель: {winner}
-                          {score}
-                        </Typography>
-                        <Button
-                          size='small'
-                          variant='text'
-                          color='warning'
-                          onClick={() => {
-                            const ok = window.confirm(
-                              'Откатить результаты до этого поединка (включительно)?',
-                            );
-                            if (ok) rollbackMutation.mutate({ toBoutId: b.id });
-                          }}
-                          disabled={rollbackMutation.isPending}
-                        >
-                          Откатить
-                        </Button>
+                currentMatState.history
+                  .filter((b) => !isByeBout(b))
+                  .slice(0, 20)
+                  .map((b) => {
+                    const winner =
+                      b.winner_athlete_id === b.athlete_red_id
+                        ? b.athlete_red_name || b.athlete_red_id
+                        : b.athlete_blue_name || b.athlete_blue_id;
+                    const score =
+                      b.red_wins !== undefined && b.blue_wins !== undefined
+                        ? ` • счёт ${b.red_wins}:${b.blue_wins}`
+                        : '';
+                    return (
+                      <Box
+                        key={`hist-${b.id}`}
+                        display='flex'
+                        justifyContent='space-between'
+                        py={0.75}
+                      >
+                        <Typography sx={{ pr: 1 }}>{boutNames(b)}</Typography>
+                        <Box display='flex' alignItems='center' gap={1}>
+                          <Typography variant='caption' color='textSecondary'>
+                            Победитель: {winner}
+                            {score}
+                          </Typography>
+                          <Button
+                            size='small'
+                            variant='text'
+                            color='warning'
+                            onClick={() => {
+                              const ok = window.confirm(
+                                'Откатить результаты до этого поединка (включительно)?',
+                              );
+                              if (ok) rollbackMutation.mutate({ toBoutId: b.id });
+                            }}
+                            disabled={rollbackMutation.isPending}
+                          >
+                            Откатить
+                          </Button>
+                        </Box>
                       </Box>
-                    </Box>
-                  );
-                })
+                    );
+                  })
               )}
             </Paper>
           </Grid>

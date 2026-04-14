@@ -259,6 +259,10 @@ export const liveService = {
     const response = await api.get(`/live/competitions/${competitionId}/state`);
     return response.data;
   },
+  getCompetitionResults: async (competitionId: string) => {
+    const response = await api.get(`/live/competitions/${competitionId}/results`);
+    return response.data;
+  },
   generateLiveBouts: async (
     competitionId: string,
     forceRegenerate = false,
