@@ -118,10 +118,15 @@ const ApplicationList = () => {
     city: '',
     location_id: '',
     coach_name: '',
+    series: '',
+    number: '',
+    issued_by: '',
+    issue_date: '',
     birth_date: '',
     gender: '',
     rank: '',
     photo_url: '',
+    passport_scan_url: '',
   });
   const [editLocation, setEditLocation] = useState({
     country_id: '',
@@ -181,10 +186,15 @@ const ApplicationList = () => {
         city: selectedAppDetails.athlete_city || '',
         location_id: selectedAppDetails.athlete_location_id || '',
         coach_name: selectedAppDetails.coach_name || '',
+        series: selectedAppDetails.passport?.series || '',
+        number: selectedAppDetails.passport?.number || '',
+        issued_by: selectedAppDetails.passport?.issued_by || '',
+        issue_date: selectedAppDetails.passport?.issue_date || '',
         birth_date: selectedAppDetails.passport?.birth_date || '',
         gender: selectedAppDetails.passport?.gender || '',
         rank: selectedAppDetails.passport?.rank || '',
         photo_url: selectedAppDetails.passport?.photo_url || '',
+        passport_scan_url: selectedAppDetails.passport?.passport_scan_url || '',
       });
       const regionId = selectedAppDetails.athlete_location_id
         ? String(selectedAppDetails.athlete_location_id)
@@ -279,8 +289,13 @@ const ApplicationList = () => {
         coach_name: editForm.coach_name,
         birth_date: editForm.birth_date,
         gender: editForm.gender,
+        series: editForm.series || null,
+        number: editForm.number || null,
+        issued_by: editForm.issued_by || null,
+        issue_date: editForm.issue_date || null,
         rank: editForm.rank,
         photo_url: editForm.photo_url,
+        passport_scan_url: editForm.passport_scan_url || null,
       });
     },
     onSuccess: () => {
@@ -305,10 +320,14 @@ const ApplicationList = () => {
   };
 
   const pendingAndRejectedApps = useMemo(() => {
-    return applications?.filter((app) => app.status === 'pending' || app.status === 'rejected') ?? [];
+    return (
+      applications?.filter((app) => app.status === 'pending' || app.status === 'rejected') ?? []
+    );
   }, [applications]);
   const mandateApps = useMemo(() => {
-    return applications?.filter((app) => app.status === 'approved' || app.status === 'weighed') ?? [];
+    return (
+      applications?.filter((app) => app.status === 'approved' || app.status === 'weighed') ?? []
+    );
   }, [applications]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
@@ -346,11 +365,17 @@ const ApplicationList = () => {
     if (!addExistingAthlete.birth_date || !addExistingAthlete.gender) return [];
     const birth = new Date(addExistingAthlete.birth_date);
     const at = competition.start_date ? new Date(competition.start_date) : new Date();
-    let age = at.getFullYear() - birth.getFullYear();
-    const m = at.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && at.getDate() < birth.getDate())) age -= 1;
+    const age = at.getFullYear() - birth.getFullYear();
+    const normalizeGender = (g: unknown) => {
+      const s = String(g ?? '')
+        .trim()
+        .toLowerCase();
+      if (s === 'male' || s === 'm' || s === 'м') return 'male';
+      if (s === 'female' || s === 'f' || s === 'ж') return 'female';
+      return s;
+    };
     return competition.categories.filter((c) => {
-      if (c.gender !== addExistingAthlete.gender) return false;
+      if (normalizeGender(c.gender) !== normalizeGender(addExistingAthlete.gender)) return false;
       if (age < c.age_min || age > c.age_max) return false;
       return true;
     });
@@ -891,6 +916,7 @@ const ApplicationList = () => {
                       <Select
                         value={editLocation.country_id}
                         label='Страна'
+                        MenuProps={{ disableScrollLock: true }}
                         onChange={(e) => {
                           const v = String(e.target.value);
                           setEditLocation({ country_id: v, district_id: '', region_id: '' });
@@ -909,6 +935,7 @@ const ApplicationList = () => {
                       <Select
                         value={editLocation.district_id}
                         label='Округ'
+                        MenuProps={{ disableScrollLock: true }}
                         onChange={(e) => {
                           const v = String(e.target.value);
                           setEditLocation((p) => ({ ...p, district_id: v, region_id: '' }));
@@ -927,6 +954,7 @@ const ApplicationList = () => {
                       <Select
                         value={editLocation.region_id}
                         label='Регион'
+                        MenuProps={{ disableScrollLock: true }}
                         onChange={(e) => {
                           const v = String(e.target.value);
                           setEditLocation((p) => ({ ...p, region_id: v }));
@@ -946,12 +974,48 @@ const ApplicationList = () => {
                       onChange={(e) => setEditForm((p) => ({ ...p, coach_name: e.target.value }))}
                       fullWidth
                     />
+                    <Box display='flex' gap={2} flexDirection={{ xs: 'column', md: 'row' }}>
+                      <TextField
+                        label='Серия паспорта'
+                        value={editForm.series}
+                        onChange={(e) => setEditForm((p) => ({ ...p, series: e.target.value }))}
+                        fullWidth
+                      />
+                      <TextField
+                        label='Номер паспорта'
+                        value={editForm.number}
+                        onChange={(e) => setEditForm((p) => ({ ...p, number: e.target.value }))}
+                        fullWidth
+                      />
+                    </Box>
+                    <TextField
+                      label='Кем выдан'
+                      value={editForm.issued_by}
+                      onChange={(e) => setEditForm((p) => ({ ...p, issued_by: e.target.value }))}
+                      fullWidth
+                    />
+                    <TextField
+                      type='date'
+                      label='Дата выдачи'
+                      InputLabelProps={{ shrink: true }}
+                      value={editForm.issue_date}
+                      onChange={(e) => setEditForm((p) => ({ ...p, issue_date: e.target.value }))}
+                      fullWidth
+                    />
                     <TextField
                       type='date'
                       label='Дата рождения'
                       InputLabelProps={{ shrink: true }}
                       value={editForm.birth_date}
                       onChange={(e) => setEditForm((p) => ({ ...p, birth_date: e.target.value }))}
+                      fullWidth
+                    />
+                    <TextField
+                      label='Скан паспорта (URL/путь)'
+                      value={editForm.passport_scan_url}
+                      onChange={(e) =>
+                        setEditForm((p) => ({ ...p, passport_scan_url: e.target.value }))
+                      }
                       fullWidth
                     />
                     <FormControl fullWidth>
@@ -1096,6 +1160,44 @@ const ApplicationList = () => {
                         ? getCategoryLabel(selectedAppDetails.category_id)
                         : 'Не указана'}
                     </Typography>
+                    <FormControl fullWidth size='small' sx={{ mb: 1 }}>
+                      <InputLabel>Категория</InputLabel>
+                      <Select
+                        value={selectedCategoryId}
+                        label='Категория'
+                        onChange={(e) => setSelectedCategoryId(e.target.value)}
+                      >
+                        {competition?.categories?.map((cat) => (
+                          <MenuItem key={cat.id} value={cat.id}>
+                            {formatCategoryLabel({
+                              gender: cat.gender,
+                              ageMin: cat.age_min,
+                              ageMax: cat.age_max,
+                              weightMin: cat.weight_min,
+                              weightMax: cat.weight_max,
+                              atDate: competition?.start_date || null,
+                            })}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Button
+                      variant='outlined'
+                      onClick={() =>
+                        updateApplicationMutation.mutate({
+                          appId: selectedAppDetails.id,
+                          status: selectedAppDetails.status,
+                          categoryId: selectedCategoryId || undefined,
+                        })
+                      }
+                      disabled={
+                        updateApplicationMutation.isPending ||
+                        !selectedCategoryId ||
+                        selectedCategoryId === selectedAppDetails.category_id
+                      }
+                    >
+                      Сохранить категорию
+                    </Button>
                     <Box mt={2}>
                       <Typography component='span' sx={{ mr: 1 }}>
                         <strong>Текущий статус:</strong>

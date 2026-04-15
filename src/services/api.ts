@@ -105,8 +105,14 @@ export const applicationService = {
     location_id: string;
     coach_name: string;
     birth_date: string;
+    gender?: string | null;
+    series?: string | null;
+    number?: string | null;
+    issued_by?: string | null;
+    issue_date?: string | null;
     rank: string;
     photo_url: string;
+    passport_scan_url?: string | null;
     declared_weight?: number | null;
     actual_weight?: number | null;
   }) => {
@@ -124,8 +130,13 @@ export const applicationService = {
       coach_name: string;
       birth_date: string;
       gender?: string | null;
+      series?: string | null;
+      number?: string | null;
+      issued_by?: string | null;
+      issue_date?: string | null;
       rank: string;
       photo_url: string;
+      passport_scan_url?: string | null;
     },
   ) => {
     const response = await api.put(`/applications/${applicationId}/athlete-profile`, payload);
@@ -223,8 +234,13 @@ export const userService = {
       coach_name?: string | null;
       birth_date?: string | null;
       gender?: string | null;
+      series?: string | null;
+      number?: string | null;
+      issued_by?: string | null;
+      issue_date?: string | null;
       rank?: string | null;
       photo_url?: string | null;
+      passport_scan_url?: string | null;
     },
   ) => {
     const response = await api.put(`/users/athletes/${athleteId}`, payload);
