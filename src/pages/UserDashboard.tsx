@@ -128,6 +128,10 @@ function ProfileTab({
   const [photoSignedUrl, setPhotoSignedUrl] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [showValidation, setShowValidation] = useState(false);
+  const [touched, setTouched] = useState<{ full_name: boolean; coach_name: boolean }>({
+    full_name: false,
+    coach_name: false,
+  });
 
   const { data: dashboard, isLoading: dashboardLoading } = useQuery({
     queryKey: ['dashboard', userId],
@@ -221,6 +225,26 @@ function ProfileTab({
     }
   }, [profile, athlete, details]);
 
+  const normalizeFullName = (v: unknown) =>
+    String(v ?? '')
+      .trim()
+      .replace(/\s+/g, ' ');
+  const getNameErrors = (value: string) => {
+    const v = normalizeFullName(value);
+    if (!v) return { error: 'Заполните ФИО.' };
+    if (/\d/.test(v)) return { error: 'ФИО не должно содержать цифры.' };
+    const parts = v.split(' ').filter(Boolean);
+    if (parts.length < 3) {
+      return {
+        error: 'ФИО должно быть полностью (минимум 3 слова). Например: Иванов Иван Иванович.',
+      };
+    }
+    if (/[A-Za-z]/.test(v)) {
+      return { hint: 'Проверьте раскладку: обычно ФИО вводится кириллицей.' };
+    }
+    return {};
+  };
+
   useEffect(() => {
     if (!locationPath) return;
     setFormData((prev) => ({
@@ -234,17 +258,14 @@ function ProfileTab({
   const validateProfile = (data: typeof formData) => {
     const errors: Partial<Record<keyof typeof formData, string>> = {};
 
-    const fullName = String(data.full_name || '').trim();
-    const fullNameParts = fullName.split(/\s+/).filter(Boolean);
-    if (!fullName) {
-      errors.full_name = 'Заполните ФИО.';
-    } else if (fullNameParts.length < 3) {
-      errors.full_name = 'ФИО должно быть полностью (минимум 3 слова).';
-    }
+    const fullName = normalizeFullName(data.full_name);
+    const fullNameCheck = getNameErrors(fullName);
+    if (fullNameCheck.error) errors.full_name = fullNameCheck.error;
 
-    const coachName = String(data.coach_name || '').trim();
-    if (!coachName) {
-      errors.coach_name = 'Заполните ФИО тренера.';
+    const coachName = normalizeFullName(data.coach_name);
+    const coachNameCheck = getNameErrors(coachName);
+    if (coachNameCheck.error) {
+      errors.coach_name = coachNameCheck.error.replace('Заполните ФИО.', 'Заполните ФИО тренера.');
     }
 
     const city = String(data.city || '').trim();
@@ -409,6 +430,9 @@ function ProfileTab({
 
   if (dashboardLoading) return <CircularProgress />;
 
+  const fullNameFeedback = getNameErrors(formData.full_name);
+  const coachNameFeedback = getNameErrors(formData.coach_name);
+
   return (
     <Paper sx={{ p: { xs: 2, sm: 3 } }}>
       {locked ? (
@@ -428,10 +452,24 @@ function ProfileTab({
             fullWidth
             label='ФИО (полностью)'
             value={formData.full_name}
-            onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+            onChange={(e) => {
+              if (!touched.full_name) setTouched((p) => ({ ...p, full_name: true }));
+              setFormData({ ...formData, full_name: e.target.value });
+            }}
             disabled={locked}
-            error={showValidation && Boolean(validation.errors.full_name)}
-            helperText={showValidation ? validation.errors.full_name : ''}
+            error={
+              (showValidation || touched.full_name) &&
+              Boolean(validation.errors.full_name || fullNameFeedback.error)
+            }
+            helperText={
+              showValidation
+                ? validation.errors.full_name
+                : touched.full_name
+                  ? fullNameFeedback.error ||
+                    fullNameFeedback.hint ||
+                    'Пример: Иванов Иван Иванович'
+                  : ''
+            }
           />
         </Grid>
         <Grid item xs={12} md={6}>
@@ -439,10 +477,24 @@ function ProfileTab({
             fullWidth
             label='ФИО Тренера'
             value={formData.coach_name}
-            onChange={(e) => setFormData({ ...formData, coach_name: e.target.value })}
+            onChange={(e) => {
+              if (!touched.coach_name) setTouched((p) => ({ ...p, coach_name: true }));
+              setFormData({ ...formData, coach_name: e.target.value });
+            }}
             disabled={locked}
-            error={showValidation && Boolean(validation.errors.coach_name)}
-            helperText={showValidation ? validation.errors.coach_name : ''}
+            error={
+              (showValidation || touched.coach_name) &&
+              Boolean(validation.errors.coach_name || coachNameFeedback.error)
+            }
+            helperText={
+              showValidation
+                ? validation.errors.coach_name
+                : touched.coach_name
+                  ? coachNameFeedback.error ||
+                    coachNameFeedback.hint ||
+                    'Пример: Петров Пётр Петрович'
+                  : ''
+            }
           />
         </Grid>
         <Grid item xs={12} md={6}>
