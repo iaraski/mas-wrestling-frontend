@@ -324,7 +324,7 @@ export default function CompetitionLiveExecution() {
     },
     onError: (err: any) => {
       const msg =
-        err?.response?.data?.detail || err?.response?.data?.message || 'Не удалось отменить бой.';
+        err?.response?.data?.detail || err?.response?.data?.message || 'Не удалось сбросить бой.';
       setActionError(String(msg));
     },
   });
@@ -337,10 +337,11 @@ export default function CompetitionLiveExecution() {
       queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
     },
     onError: (err: any) => {
+      const detail = err?.response?.data?.detail || err?.response?.data?.message || '';
       const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        'Не удалось откатить поединки.';
+        detail === 'Stop the running bout before rollback'
+          ? 'Сначала сбросьте текущий поединок (кнопка «Сбросить» или завершите бой), затем повторите откат.'
+          : detail || 'Не удалось откатить поединки.';
       setActionError(String(msg));
     },
   });
@@ -378,6 +379,7 @@ export default function CompetitionLiveExecution() {
     () => mats.find((m) => m.mat_number === currentMat) || null,
     [mats, currentMat],
   );
+  const hasRunningBout = Boolean(currentMatState?.current_bout?.status === 'running');
 
   const isByeBout = (bout: LiveBout) =>
     bout.athlete_red_id === bout.athlete_blue_id &&
@@ -937,12 +939,14 @@ export default function CompetitionLiveExecution() {
                             variant='outlined'
                             color='warning'
                             onClick={() => {
-                              const ok = window.confirm('Отменить этот поединок?');
+                              const ok = window.confirm(
+                                'Сбросить этот поединок? Очки и победитель будут очищены, и бой можно будет начать заново.',
+                              );
                               if (ok) cancelMutation.mutate(currentMatState.current_bout!.id);
                             }}
                             disabled={cancelMutation.isPending}
                           >
-                            Отмена
+                            Сбросить
                           </Button>
                           <Button
                             variant='outlined'
@@ -1137,6 +1141,45 @@ export default function CompetitionLiveExecution() {
               <Typography variant='h6' gutterBottom sx={{ mt: 3 }}>
                 История
               </Typography>
+              {hasRunningBout ? (
+                <Alert severity='warning' sx={{ mb: 1 }}>
+                  Откат недоступен пока идёт поединок. Сначала сбросьте текущий поединок (кнопка
+                  «Сбросить» или завершите бой), затем повторите откат.
+                </Alert>
+              ) : null}
+              <Box mb={1}>
+                <Button
+                  size='small'
+                  variant='outlined'
+                  color='warning'
+                  onClick={() => {
+                    const ok = window.confirm(
+                      'Откатить все результаты на этом ковре (к самому первому)?',
+                    );
+                    if (ok) rollbackMutation.mutate({ lastCount: 0 });
+                  }}
+                  disabled={rollbackMutation.isPending || hasRunningBout}
+                >
+                  Откатить всё
+                </Button>
+                {hasRunningBout && currentMatState?.current_bout?.id ? (
+                  <Button
+                    size='small'
+                    variant='text'
+                    color='warning'
+                    sx={{ ml: 1 }}
+                    onClick={() => {
+                      const ok = window.confirm(
+                        'Сбросить текущий поединок? Очки и победитель будут очищены, и бой можно будет начать заново.',
+                      );
+                      if (ok) cancelMutation.mutate(currentMatState.current_bout!.id);
+                    }}
+                    disabled={cancelMutation.isPending}
+                  >
+                    Сбросить бой
+                  </Button>
+                ) : null}
+              </Box>
               {!currentMatState.history || currentMatState.history.length === 0 ? (
                 <Typography color='textSecondary'>Пока пусто.</Typography>
               ) : (
@@ -1175,7 +1218,7 @@ export default function CompetitionLiveExecution() {
                               );
                               if (ok) rollbackMutation.mutate({ toBoutId: b.id });
                             }}
-                            disabled={rollbackMutation.isPending}
+                            disabled={rollbackMutation.isPending || hasRunningBout}
                           >
                             Откатить
                           </Button>
