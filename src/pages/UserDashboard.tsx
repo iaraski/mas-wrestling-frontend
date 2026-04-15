@@ -19,10 +19,16 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import dayjs from 'dayjs';
+import 'dayjs/locale/ru';
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import api from '../services/api';
 import { formatCategoryLabel } from '../utils/categoryFormat';
 
@@ -113,7 +119,14 @@ function ProfileTab({
     district_id: '',
     region_id: '',
     coach_name: '',
+    birth_date: '',
+    gender: '',
+    rank: '',
+    photo_url: '',
   });
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const [photoSignedUrl, setPhotoSignedUrl] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [showValidation, setShowValidation] = useState(false);
 
   const { data: dashboard, isLoading: dashboardLoading } = useQuery({
@@ -197,6 +210,15 @@ function ProfileTab({
         coach_name: athlete.coach_name || '',
       }));
     }
+    if (details) {
+      setFormData((prev) => ({
+        ...prev,
+        birth_date: details.birth_date || '',
+        gender: details.gender || '',
+        rank: details.rank || '',
+        photo_url: details.photo_url || '',
+      }));
+    }
   }, [profile, athlete, details]);
 
   useEffect(() => {
@@ -247,6 +269,31 @@ function ProfileTab({
       errors.region_id = 'Выберите регион.';
     }
 
+    if (!data.birth_date) {
+      errors.birth_date = 'Заполните дату рождения.';
+    } else {
+      const d = new Date(data.birth_date);
+      if (Number.isNaN(d.getTime())) {
+        errors.birth_date = 'Некорректная дата рождения.';
+      } else if (d > new Date()) {
+        errors.birth_date = 'Дата рождения не может быть в будущем.';
+      }
+    }
+
+    if (!data.gender) {
+      errors.gender = 'Выберите пол.';
+    } else if (data.gender !== 'male' && data.gender !== 'female') {
+      errors.gender = 'Некорректное значение пола.';
+    }
+
+    if (!data.rank) {
+      errors.rank = 'Выберите разряд/звание.';
+    }
+
+    if (!data.photo_url) {
+      if (!photoFile) errors.photo_url = 'Загрузите фото 3×4.';
+    }
+
     const messages = Object.values(errors).filter(Boolean) as string[];
     return { ok: messages.length === 0, errors, message: messages[0] || '' };
   };
@@ -262,24 +309,103 @@ function ProfileTab({
     form.append('city', String(data.city || '').trim());
     form.append('location_id', data.region_id ? String(data.region_id) : '');
     form.append('coach_name', String(data.coach_name || '').trim());
+    form.append('birth_date', data.birth_date ? String(data.birth_date) : '');
+    form.append('gender', data.gender ? String(data.gender) : '');
+    form.append('rank', data.rank ? String(data.rank) : '');
+    form.append('photo_url', data.photo_url ? String(data.photo_url) : '');
+    if (photoFile) form.append('photo', photoFile);
 
-    await api.post(`/users/me/profile/submit`, form, {
+    const { data: resp } = await api.post(`/users/me/profile/submit`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    const savedPhotoUrl = resp?.photo_url ? String(resp.photo_url) : null;
+    return { photo_url: savedPhotoUrl };
   };
 
   const updateProfile = useMutation({
     mutationFn: saveProfile,
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
+      const finalPhotoUrl = data?.photo_url ? String(data.photo_url) : variables.photo_url || null;
+      if (finalPhotoUrl) {
+        setFormData((prev) => ({ ...prev, photo_url: finalPhotoUrl }));
+        setPhotoFile(null);
+      }
+      queryClient.setQueryData(['details', userId], (prev: any) => ({
+        ...(prev || {}),
+        birth_date: variables.birth_date || null,
+        gender: variables.gender || null,
+        rank: variables.rank || null,
+        photo_url: finalPhotoUrl,
+      }));
+      queryClient.invalidateQueries({ queryKey: ['details', userId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard', userId] });
       setShowValidation(false);
-      setNotice({ severity: 'success', message: 'Профиль сохранен.' });
+      setNotice({ severity: 'success', message: 'Регистрация успешно завершена' });
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.detail || err?.message || 'Не удалось сохранить профиль.';
       setNotice({ severity: 'error', message: String(msg) });
     },
   });
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const localUrl = URL.createObjectURL(file);
+      setPhotoPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return localUrl;
+      });
+      setPhotoFile(file);
+      setNotice({ severity: 'info', message: 'Фото выбрано. Нажмите «Сохранить профиль».' });
+    } catch (ex: any) {
+      const msg = ex?.message || ex?.error_description || 'Ошибка при загрузке фото.';
+      setNotice({ severity: 'error', message: String(msg) });
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    };
+  }, [photoPreviewUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!formData.photo_url) {
+        setPhotoSignedUrl(null);
+        return;
+      }
+      if (photoPreviewUrl) return;
+      if (/^https?:\/\//i.test(formData.photo_url)) {
+        setPhotoSignedUrl(formData.photo_url);
+        return;
+      }
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        setPhotoSignedUrl(null);
+        return;
+      }
+      const { data, error } = await supabase.storage
+        .from('avatars')
+        .createSignedUrl(formData.photo_url, 60 * 60);
+      if (cancelled) return;
+      if (error) {
+        setPhotoSignedUrl(null);
+        return;
+      }
+      setPhotoSignedUrl(data?.signedUrl || null);
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.photo_url, photoPreviewUrl]);
 
   if (dashboardLoading) return <CircularProgress />;
 
@@ -330,11 +456,69 @@ function ProfileTab({
             helperText={showValidation ? validation.errors.phone : ''}
           />
         </Grid>
-        <Grid item xs={12}>
-          <Alert severity='info'>
-            Паспортные данные (дата рождения, пол, разряд, фото) заполняются
-            администратором/секретарём.
-          </Alert>
+        <Grid item xs={12} md={6}>
+          <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale='ru'>
+            <DatePicker
+              label='Дата рождения'
+              format='DD.MM.YYYY'
+              value={formData.birth_date ? dayjs(formData.birth_date) : null}
+              onChange={(v) => {
+                const iso = v && v.isValid() ? v.format('YYYY-MM-DD') : '';
+                setFormData({ ...formData, birth_date: iso });
+              }}
+              disabled={locked}
+              slotProps={{
+                textField: {
+                  fullWidth: true,
+                  error: showValidation && Boolean(validation.errors.birth_date),
+                  helperText: showValidation ? validation.errors.birth_date : '',
+                },
+              }}
+            />
+          </LocalizationProvider>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <FormControl
+            fullWidth
+            disabled={locked}
+            error={showValidation && Boolean(validation.errors.gender)}
+          >
+            <InputLabel>Пол</InputLabel>
+            <Select
+              value={formData.gender}
+              label='Пол'
+              onChange={(e) => setFormData({ ...formData, gender: String(e.target.value) })}
+            >
+              <MenuItem value='male'>Мужской</MenuItem>
+              <MenuItem value='female'>Женский</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <FormControl
+            fullWidth
+            disabled={locked}
+            error={showValidation && Boolean(validation.errors.rank)}
+          >
+            <InputLabel>Разряд / звание</InputLabel>
+            <Select
+              value={formData.rank}
+              label='Разряд / звание'
+              onChange={(e) => setFormData({ ...formData, rank: String(e.target.value) })}
+            >
+              <MenuItem value='Б/Р'>Без разряда</MenuItem>
+              <MenuItem value='3 юн'>3 юношеский</MenuItem>
+              <MenuItem value='2 юн'>2 юношеский</MenuItem>
+              <MenuItem value='1 юн'>1 юношеский</MenuItem>
+              <MenuItem value='3'>3 спортивный</MenuItem>
+              <MenuItem value='2'>2 спортивный</MenuItem>
+              <MenuItem value='1'>1 спортивный</MenuItem>
+              <MenuItem value='КМС'>КМС</MenuItem>
+              <MenuItem value='МС'>МС</MenuItem>
+              <MenuItem value='МСМК'>МСМК</MenuItem>
+              <MenuItem value='ЗМС'>ЗМС</MenuItem>
+            </Select>
+          </FormControl>
         </Grid>
         <Grid item xs={12}>
           <TextField
@@ -433,6 +617,32 @@ function ProfileTab({
               ))}
             </Select>
           </FormControl>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Typography variant='h6'>Фото 3×4</Typography>
+          {!locked ? (
+            <Button variant='outlined' component='label' fullWidth sx={{ mt: 1 }}>
+              Загрузить фото
+              <input type='file' hidden accept='image/*' onChange={handleFileUpload} />
+            </Button>
+          ) : null}
+          {photoPreviewUrl || photoSignedUrl || formData.photo_url ? (
+            <Box mt={1}>
+              <img
+                src={
+                  photoPreviewUrl ||
+                  photoSignedUrl ||
+                  (/^https?:\/\//i.test(formData.photo_url)
+                    ? formData.photo_url
+                    : supabase.storage.from('avatars').getPublicUrl(formData.photo_url).data
+                        .publicUrl)
+                }
+                alt='Фото 3x4'
+                style={{ width: '100%', maxHeight: '240px', objectFit: 'contain' }}
+              />
+            </Box>
+          ) : null}
         </Grid>
 
         <Grid item xs={12}>
@@ -650,8 +860,7 @@ function CompetitionsTab({
             </Typography>
             {!birth || !gender ? (
               <Typography color='textSecondary' sx={{ mb: 1 }}>
-                Дата рождения/пол заполняются администратором/секретарём. Пока показываем все
-                категории.
+                Заполните дату рождения и пол в профиле, чтобы увидеть доступные категории.
               </Typography>
             ) : null}
             <Box display='flex' flexWrap='wrap' gap={1}>
@@ -659,7 +868,7 @@ function CompetitionsTab({
                 new Map(
                   (comp.categories || [])
                     .filter((cat: any) => {
-                      if (!birth || !gender) return true;
+                      if (!birth || !gender) return false;
                       if (cat.gender && normalizeGender(cat.gender) !== normalizeGender(gender))
                         return false;
                       const atDate = comp.start_date ? new Date(comp.start_date) : new Date();
@@ -706,11 +915,14 @@ function CompetitionsTab({
                       });
                       return;
                     }
-                    const confirmText =
-                      !birth || !gender
-                        ? 'Подать заявку в эту категорию? (категория может быть скорректирована секретарём)'
-                        : 'Подать заявку в эту категорию?';
-                    if (window.confirm(confirmText)) {
+                    if (!birth || !gender) {
+                      setNotice({
+                        severity: 'info',
+                        message: 'Для подачи заявки заполните дату рождения и пол в профиле.',
+                      });
+                      return;
+                    }
+                    if (window.confirm('Подать заявку в эту категорию?')) {
                       applyMutation.mutate(cat.id);
                     }
                   }}
