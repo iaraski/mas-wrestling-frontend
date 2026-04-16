@@ -127,6 +127,7 @@ export default function CompetitionLiveExecution() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [forceLiveView, setForceLiveView] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(false);
   const [currentMat, setCurrentMat] = useState(1);
   const [expandedRoundKeys, setExpandedRoundKeys] = useState<Record<string, boolean>>({});
   const [expandedCategoryKeys, setExpandedCategoryKeys] = useState<Record<string, boolean>>({});
@@ -154,11 +155,14 @@ export default function CompetitionLiveExecution() {
   const hasBouts = liveQuery.data?.competition?.has_bouts || false;
   const isFinished = liveQuery.data?.competition?.is_finished || false;
 
+  const showResultsView = isFinished ? !forceLiveView : resultsOpen;
+
   const resultsQuery = useQuery<CompetitionResults>({
     queryKey: ['competition_results', compId],
     queryFn: () => liveService.getCompetitionResults(compId!),
-    enabled: !!compId && isFinished,
+    enabled: !!compId,
     refetchOnWindowFocus: false,
+    refetchInterval: showResultsView ? 10_000 : false,
   });
 
   useEffect(() => {
@@ -176,6 +180,7 @@ export default function CompetitionLiveExecution() {
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+          queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
         },
       )
       .on(
@@ -188,6 +193,7 @@ export default function CompetitionLiveExecution() {
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+          queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
         },
       )
       .on(
@@ -200,6 +206,7 @@ export default function CompetitionLiveExecution() {
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+          queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
         },
       )
       .subscribe();
@@ -505,7 +512,7 @@ export default function CompetitionLiveExecution() {
     );
   }
 
-  if (isFinished && !forceLiveView) {
+  if (showResultsView) {
     if (resultsQuery.isLoading) {
       return (
         <Container maxWidth='lg' sx={{ mt: 4, mb: 4 }}>
@@ -545,9 +552,15 @@ export default function CompetitionLiveExecution() {
           <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(`/competitions/${compId}`)}>
             Назад
           </Button>
-          <Button variant='contained' onClick={() => setForceLiveView(true)}>
-            Вернуться в Live
-          </Button>
+          {isFinished ? (
+            <Button variant='contained' onClick={() => setForceLiveView(true)}>
+              Вернуться в Live
+            </Button>
+          ) : (
+            <Button variant='contained' onClick={() => setResultsOpen(false)}>
+              Вернуться в Live
+            </Button>
+          )}
           <Button variant='outlined' onClick={() => resultsQuery.refetch()}>
             Обновить
           </Button>
@@ -590,7 +603,7 @@ export default function CompetitionLiveExecution() {
                 Призёры по категориям
               </Typography>
               {finishedCategories.length === 0 ? (
-                <Typography color='textSecondary'>Нет завершённых категорий.</Typography>
+                <Typography color='textSecondary'>Пока нет завершённых категорий.</Typography>
               ) : (
                 <Box display='flex' flexDirection='column' gap={2}>
                   {finishedCategories.map((cat) => (
@@ -617,6 +630,32 @@ export default function CompetitionLiveExecution() {
             </Paper>
           </Grid>
         </Grid>
+
+        {!isFinished ? (
+          <Box mt={3}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant='h6' gutterBottom>
+                Категории в процессе
+              </Typography>
+              {(results.categories || []).filter((c) => !c.is_finished).length === 0 ? (
+                <Typography color='textSecondary'>Нет.</Typography>
+              ) : (
+                <List dense>
+                  {(results.categories || [])
+                    .filter((c) => !c.is_finished)
+                    .map((c) => (
+                      <ListItem key={c.category_id} disableGutters>
+                        <ListItemText
+                          primary={c.label || c.category_id}
+                          secondary={`Поединков: ${c.done_bouts}/${c.total_bouts}`}
+                        />
+                      </ListItem>
+                    ))}
+                </List>
+              )}
+            </Paper>
+          </Box>
+        ) : null}
       </Container>
     );
   }
@@ -627,11 +666,16 @@ export default function CompetitionLiveExecution() {
         <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(`/competitions/${compId}`)}>
           Назад
         </Button>
-        {isFinished ? (
-          <Button variant='outlined' onClick={() => setForceLiveView(false)}>
-            Показать итоги
-          </Button>
-        ) : null}
+        <Button
+          variant='outlined'
+          onClick={() => {
+            if (isFinished) setForceLiveView(false);
+            else setResultsOpen(true);
+          }}
+          disabled={!hasBouts}
+        >
+          Показать итоги
+        </Button>
         <Button
           variant='contained'
           color='warning'
