@@ -1,4 +1,5 @@
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import DownloadIcon from '@mui/icons-material/Download';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
   Accordion,
@@ -21,6 +22,7 @@ import {
   FormControlLabel,
   FormLabel,
   Grid,
+  IconButton,
   InputLabel,
   List,
   ListItem,
@@ -32,10 +34,11 @@ import {
   Select,
   Tab,
   Tabs,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { liveService } from '../services/api';
@@ -61,7 +64,15 @@ type LiveBout = {
 
 type LiveMat = {
   mat_number: number;
-  categories: Array<{ id: string; label: string }>;
+  categories: Array<{ id: string; label: string; day?: string | null }>;
+  notices?: Array<{
+    kind: 'finals_moved';
+    category_id: string;
+    label: string;
+    to_mat: number;
+    athlete_red_name: string;
+    athlete_blue_name: string;
+  }>;
   current_bout: LiveBout | null;
   next_bout: LiveBout | null;
   queue: LiveBout[];
@@ -74,6 +85,10 @@ type LiveState = {
     id: string;
     name: string;
     mats_count: number;
+    days?: string[];
+    selected_day?: string | null;
+    selected_day_index?: number | null;
+    finals_mat?: number | null;
     has_bouts: boolean;
     has_started: boolean;
     is_finished?: boolean;
@@ -118,7 +133,15 @@ type CompetitionResults = {
     total_bouts: number;
     done_bouts: number;
     is_finished: boolean;
-    winners: Array<{ place: number; athlete_id: string; name: string }>;
+    winners: Array<{
+      place: number;
+      athlete_id: string;
+      name: string;
+      weight?: number | null;
+      win_points?: number;
+      loss_points?: number;
+      diff_points?: number;
+    }>;
   }>;
 };
 
@@ -128,6 +151,7 @@ export default function CompetitionLiveExecution() {
   const queryClient = useQueryClient();
   const [forceLiveView, setForceLiveView] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
   const [currentMat, setCurrentMat] = useState(1);
   const [expandedRoundKeys, setExpandedRoundKeys] = useState<Record<string, boolean>>({});
   const [expandedCategoryKeys, setExpandedCategoryKeys] = useState<Record<string, boolean>>({});
@@ -140,11 +164,23 @@ export default function CompetitionLiveExecution() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawAthleteId, setWithdrawAthleteId] = useState<string | null>(null);
   const [withdrawAthleteLabel, setWithdrawAthleteLabel] = useState<string>('');
-  const [withdrawReason, setWithdrawReason] = useState<'medical' | 'disciplinary'>('medical');
+  const [withdrawReason, setWithdrawReason] = useState<'medical' | 'no_show'>('medical');
+  const resultsRefetchTimerRef = useRef<number | null>(null);
+  const resultsCommitTimerRef = useRef<number | null>(null);
+  const latestResultsRef = useRef<CompetitionResults | null>(null);
+  const [stableResults, setStableResults] = useState<CompetitionResults | null>(null);
+  const formatWeight = (w?: number | null) =>
+    typeof w === 'number' && Number.isFinite(w)
+      ? w.toFixed(2).replace(/\.?0+$/, '')
+      : '—';
 
   const liveQuery = useQuery<LiveState>({
-    queryKey: ['live_state', compId],
-    queryFn: () => liveService.getLiveState(compId!),
+    queryKey: ['live_state', compId, selectedDayIndex || null],
+    queryFn: () =>
+      liveService.getLiveState(
+        compId!,
+        selectedDayIndex ? { day_index: selectedDayIndex } : undefined,
+      ),
     enabled: !!compId,
     refetchOnWindowFocus: false,
   });
@@ -154,6 +190,10 @@ export default function CompetitionLiveExecution() {
   const hasStarted = liveQuery.data?.competition?.has_started || false;
   const hasBouts = liveQuery.data?.competition?.has_bouts || false;
   const isFinished = liveQuery.data?.competition?.is_finished || false;
+  const days = useMemo(
+    () => liveQuery.data?.competition?.days || [],
+    [liveQuery.data?.competition?.days],
+  );
 
   const showResultsView = isFinished ? !forceLiveView : resultsOpen;
 
@@ -162,8 +202,57 @@ export default function CompetitionLiveExecution() {
     queryFn: () => liveService.getCompetitionResults(compId!),
     enabled: !!compId,
     refetchOnWindowFocus: false,
-    refetchInterval: showResultsView ? 10_000 : false,
+    refetchInterval: showResultsView ? 5_000 : false,
+    refetchIntervalInBackground: showResultsView,
   });
+
+  useEffect(() => {
+    latestResultsRef.current = resultsQuery.data || null;
+  }, [resultsQuery.data]);
+
+  useEffect(() => {
+    setStableResults(null);
+    if (resultsCommitTimerRef.current) {
+      window.clearTimeout(resultsCommitTimerRef.current);
+      resultsCommitTimerRef.current = null;
+    }
+  }, [compId]);
+
+  useEffect(() => {
+    if (!showResultsView) return;
+    if (!compId) return;
+    queryClient.refetchQueries({ queryKey: ['competition_results', compId] });
+  }, [compId, queryClient, showResultsView]);
+
+  useEffect(() => {
+    if (!showResultsView) return;
+    if (!stableResults && resultsQuery.data) {
+      setStableResults(resultsQuery.data);
+    }
+  }, [resultsQuery.data, showResultsView, stableResults]);
+
+  useEffect(() => {
+    if (!showResultsView) return;
+    if (!latestResultsRef.current) return;
+    if (resultsCommitTimerRef.current) {
+      window.clearTimeout(resultsCommitTimerRef.current);
+    }
+    resultsCommitTimerRef.current = window.setTimeout(() => {
+      setStableResults(latestResultsRef.current);
+      resultsCommitTimerRef.current = null;
+    }, 600);
+  }, [resultsQuery.data, showResultsView]);
+
+  const scheduleResultsRefetch = useCallback(() => {
+    if (!showResultsView || !compId) return;
+    if (resultsRefetchTimerRef.current) {
+      window.clearTimeout(resultsRefetchTimerRef.current);
+    }
+    resultsRefetchTimerRef.current = window.setTimeout(() => {
+      queryClient.refetchQueries({ queryKey: ['competition_results', compId] });
+      resultsRefetchTimerRef.current = null;
+    }, 700);
+  }, [compId, queryClient, showResultsView]);
 
   useEffect(() => {
     if (!compId) return;
@@ -181,6 +270,7 @@ export default function CompetitionLiveExecution() {
         () => {
           queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
           queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
+          scheduleResultsRefetch();
         },
       )
       .on(
@@ -194,6 +284,7 @@ export default function CompetitionLiveExecution() {
         () => {
           queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
           queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
+          scheduleResultsRefetch();
         },
       )
       .on(
@@ -207,14 +298,23 @@ export default function CompetitionLiveExecution() {
         () => {
           queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
           queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
+          scheduleResultsRefetch();
         },
       )
       .subscribe();
 
     return () => {
+      if (resultsRefetchTimerRef.current) {
+        window.clearTimeout(resultsRefetchTimerRef.current);
+        resultsRefetchTimerRef.current = null;
+      }
+      if (resultsCommitTimerRef.current) {
+        window.clearTimeout(resultsCommitTimerRef.current);
+        resultsCommitTimerRef.current = null;
+      }
       supabase.removeChannel(channel);
     };
-  }, [compId, queryClient]);
+  }, [compId, queryClient, scheduleResultsRefetch, showResultsView]);
 
   const generateMutation = useMutation({
     mutationFn: async (): Promise<GenerateLiveResponse> => {
@@ -225,6 +325,7 @@ export default function CompetitionLiveExecution() {
       return liveService.generateLiveBouts(compId!, generateForce, generateRebalance, {
         active_mats: active,
         finals_mat: finalsMat,
+        day_index: selectedDayIndex || null,
       });
     },
     onSuccess: (data) => {
@@ -261,13 +362,31 @@ export default function CompetitionLiveExecution() {
     },
   });
 
+  const downloadCategoryCsv = async (categoryId: string, label: string) => {
+    if (!compId) return;
+    const safe = String(label || 'category')
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const filename = `${safe || categoryId}.csv`;
+    const blob = await liveService.exportCategoryCsv(compId, categoryId);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const withdrawMutation = useMutation({
     mutationFn: async ({
       athleteId,
       reason,
     }: {
       athleteId: string;
-      reason: 'medical' | 'disciplinary';
+      reason: 'medical' | 'no_show';
     }) => {
       return liveService.withdrawAthlete(compId!, athleteId, reason);
     },
@@ -374,6 +493,19 @@ export default function CompetitionLiveExecution() {
       setCurrentMat(1);
     }
   }, [currentMat, matsCount]);
+
+  useEffect(() => {
+    if (selectedDayIndex) return;
+    const idx = liveQuery.data?.competition?.selected_day_index;
+    if (idx && idx > 0) {
+      setSelectedDayIndex(idx);
+      return;
+    }
+    if (days.length === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const pos = days.indexOf(today);
+    setSelectedDayIndex(pos >= 0 ? pos + 1 : 1);
+  }, [days, liveQuery.data?.competition?.selected_day_index, selectedDayIndex]);
 
   useEffect(() => {
     setGenerateMatsEnabled((prev) => {
@@ -513,7 +645,7 @@ export default function CompetitionLiveExecution() {
   }
 
   if (showResultsView) {
-    if (resultsQuery.isLoading) {
+    if (!stableResults && resultsQuery.isLoading) {
       return (
         <Container maxWidth='lg' sx={{ mt: 4, mb: 4 }}>
           <Box display='flex' justifyContent='center' mt={4}>
@@ -523,7 +655,7 @@ export default function CompetitionLiveExecution() {
       );
     }
 
-    if (resultsQuery.isError || !resultsQuery.data) {
+    if (!stableResults && (resultsQuery.isError || !resultsQuery.data)) {
       return (
         <Container maxWidth='lg' sx={{ mt: 4, mb: 4 }}>
           <Box display='flex' justifyContent='space-between' alignItems='center' mb={2} gap={2}>
@@ -542,7 +674,7 @@ export default function CompetitionLiveExecution() {
       );
     }
 
-    const results = resultsQuery.data;
+    const results = stableResults || resultsQuery.data!;
     const champions = results.champions || [];
     const finishedCategories = (results.categories || []).filter((c) => c.is_finished);
 
@@ -562,7 +694,7 @@ export default function CompetitionLiveExecution() {
             </Button>
           )}
           <Button variant='outlined' onClick={() => resultsQuery.refetch()}>
-            Обновить
+            {resultsQuery.isFetching ? 'Обновление...' : 'Обновить'}
           </Button>
         </Box>
 
@@ -616,7 +748,10 @@ export default function CompetitionLiveExecution() {
                               key={`${cat.category_id}:${w.place}:${w.athlete_id}`}
                               disableGutters
                             >
-                              <ListItemText primary={`${w.place}. ${w.name || '—'}`} />
+                              <ListItemText
+                                primary={`${w.place}. ${w.name || '—'} (${formatWeight(w.weight)} кг)`}
+                                secondary={`Победы: ${w.win_points ?? 0} • Поражения: ${w.loss_points ?? 0} • Разница: ${w.diff_points ?? 0}`}
+                              />
                             </ListItem>
                           ))}
                         </List>
@@ -745,10 +880,10 @@ export default function CompetitionLiveExecution() {
             />
 
             <FormControl fullWidth>
-              <InputLabel>Помост для финалов/полуфиналов</InputLabel>
+              <InputLabel>Помост для финалов</InputLabel>
               <Select
                 value={generateFinalsMat}
-                label='Помост для финалов/полуфиналов'
+                label='Помост для финалов'
                 onChange={(e) => {
                   const val = e.target.value === '' ? '' : Number(e.target.value);
                   setGenerateFinalsMat(val as any);
@@ -829,11 +964,7 @@ export default function CompetitionLiveExecution() {
                   control={<Radio />}
                   label='Медицинские показания'
                 />
-                <FormControlLabel
-                  value='disciplinary'
-                  control={<Radio />}
-                  label='Дисциплинарные причины'
-                />
+                <FormControlLabel value='no_show' control={<Radio />} label='Неявка' />
               </RadioGroup>
             </FormControl>
           </Box>
@@ -846,7 +977,9 @@ export default function CompetitionLiveExecution() {
             onClick={() => {
               if (!withdrawAthleteId) return;
               const ok = window.confirm(
-                'Снять спортсмена с соревнований? Все его будущие бои будут отменены.',
+                withdrawReason === 'no_show'
+                  ? 'Отметить неявку? Спортсмен полностью снимается с соревнований и не участвует дальше.'
+                  : 'Снять по медицинским? Спортсмен не участвует дальше, но может быть награждён.',
               );
               if (!ok) return;
               withdrawMutation.mutate({ athleteId: withdrawAthleteId, reason: withdrawReason });
@@ -868,6 +1001,25 @@ export default function CompetitionLiveExecution() {
         <Typography variant='subtitle2' color='textSecondary' gutterBottom>
           Текущий круг (помост {currentMat}): {currentMatState.current_round}
         </Typography>
+      ) : null}
+
+      {days.length > 1 ? (
+        <Box mb={2} display='flex' justifyContent='flex-end'>
+          <FormControl size='small' sx={{ minWidth: 220 }}>
+            <InputLabel>День</InputLabel>
+            <Select
+              value={selectedDayIndex || 1}
+              label='День'
+              onChange={(e) => setSelectedDayIndex(Number(e.target.value))}
+            >
+              {days.map((d, idx) => (
+                <MenuItem key={d} value={idx + 1}>
+                  День {idx + 1} • {d}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
       ) : null}
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
@@ -896,6 +1048,15 @@ export default function CompetitionLiveExecution() {
                   <Box key={c.id}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Typography sx={{ flex: 1 }}>{c.label}</Typography>
+                      <Tooltip title='Выгрузить CSV'>
+                        <IconButton
+                          size='small'
+                          onClick={() => downloadCategoryCsv(c.id, c.label)}
+                          disabled={!hasBouts}
+                        >
+                          <DownloadIcon fontSize='small' />
+                        </IconButton>
+                      </Tooltip>
                       <FormControl size='small' sx={{ minWidth: 120 }}>
                         <InputLabel>Помост</InputLabel>
                         <Select
@@ -930,6 +1091,17 @@ export default function CompetitionLiveExecution() {
               <Typography variant='h6' gutterBottom>
                 Сейчас / Следующий
               </Typography>
+
+              {currentMatState.notices && currentMatState.notices.length > 0 ? (
+                <Box mb={2} display='flex' flexDirection='column' gap={1}>
+                  {currentMatState.notices.map((n, idx) => (
+                    <Alert key={`${n.kind}-${idx}`} severity='info'>
+                      Финал категории «{n.label}» перенесён на помост {n.to_mat}:{' '}
+                      {n.athlete_red_name} vs {n.athlete_blue_name}
+                    </Alert>
+                  ))}
+                </Box>
+              ) : null}
 
               {currentMatState.current_bout ? (
                 <Card sx={{ mb: 2, borderLeft: '4px solid #4caf50' }}>

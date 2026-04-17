@@ -270,6 +270,7 @@ const CompetitionCreate = () => {
     console.log('[Frontend] Form raw data:', data);
 
     const finalCategories: CompetitionCategoryForm[] = [];
+    const weightStep = 0.01;
 
     data.category_groups.forEach((group: any) => {
       // Separate normal weights and "plus" weights (like "100+")
@@ -295,7 +296,8 @@ const CompetitionCreate = () => {
       });
 
       // Sort normal weights ascending
-      normalWeights.sort((a, b) => a - b);
+      const uniqNormalWeights = Array.from(new Set(normalWeights)).sort((a, b) => a - b);
+      const uniqPlusWeights = Array.from(new Set(plusWeights)).sort((a, b) => a - b);
 
       let prevWeight = 0;
 
@@ -310,7 +312,7 @@ const CompetitionCreate = () => {
       const idsByValue: Record<string, string> = group._idsByValue || {};
 
       // Create categories for normal weights
-      normalWeights.forEach((w) => {
+      uniqNormalWeights.forEach((w) => {
         const id = idsByValue[String(w)] || undefined;
         finalCategories.push({
           id,
@@ -322,18 +324,18 @@ const CompetitionCreate = () => {
           competition_day: compDayIso,
           mandate_day: mandateDayIso,
         });
-        prevWeight = w;
+        prevWeight = w + weightStep;
       });
 
       // Handle "plus" weights
-      plusWeights.forEach((plusW) => {
+      uniqPlusWeights.forEach((plusW) => {
         const id = idsByValue[`${plusW}+`] || undefined;
         finalCategories.push({
           id,
           gender: group.gender,
           age_min: Number(group.age_min),
           age_max: Number(group.age_max),
-          weight_min: plusW,
+          weight_min: prevWeight ? Math.max(prevWeight, plusW + weightStep) : plusW,
           weight_max: 999, // 999 indicates no upper limit in the system
           competition_day: compDayIso,
           mandate_day: mandateDayIso,

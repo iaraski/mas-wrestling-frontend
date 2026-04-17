@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Layout() {
-  const { signOut, user, role } = useAuth();
+  const { signOut, user, role, accessToken, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -13,6 +13,7 @@ export default function Layout() {
   };
 
   const isAdmin = role === 'admin' || role === 'secretary';
+  const hasAuth = Boolean(accessToken || user);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -26,7 +27,7 @@ export default function Layout() {
           >
             MAS-WRESTLING ONLINE {isAdmin ? 'Admin' : 'Спортсмен'}
           </Typography>
-          {user && (
+          {hasAuth && !loading && (
             <>
               {isAdmin ? (
                 <>

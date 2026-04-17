@@ -271,25 +271,35 @@ export const locationService = {
 };
 
 export const liveService = {
-  getLiveState: async (competitionId: string) => {
-    const response = await api.get(`/live/competitions/${competitionId}/state`);
+  getLiveState: async (competitionId: string, opts?: { day_index?: number }) => {
+    const response = await api.get(`/live/competitions/${competitionId}/state`, {
+      params: opts?.day_index ? { day_index: opts.day_index } : undefined,
+    });
     return response.data;
   },
   getCompetitionResults: async (competitionId: string) => {
     const response = await api.get(`/live/competitions/${competitionId}/results`);
     return response.data;
   },
+  exportCategoryCsv: async (competitionId: string, categoryId: string) => {
+    const response = await api.get(
+      `/live/competitions/${competitionId}/categories/${categoryId}/export.csv`,
+      { responseType: 'blob' },
+    );
+    return response.data as Blob;
+  },
   generateLiveBouts: async (
     competitionId: string,
     forceRegenerate = false,
     rebalanceAssignments = false,
-    options?: { active_mats?: number[]; finals_mat?: number | null },
+    options?: { active_mats?: number[]; finals_mat?: number | null; day_index?: number | null },
   ) => {
     const response = await api.post(`/live/competitions/${competitionId}/generate`, {
       force_regenerate: forceRegenerate,
       rebalance_assignments: rebalanceAssignments,
       active_mats: options?.active_mats,
       finals_mat: options?.finals_mat ?? undefined,
+      day_index: options?.day_index ?? undefined,
     });
     return response.data;
   },
@@ -336,7 +346,7 @@ export const liveService = {
   withdrawAthlete: async (
     competitionId: string,
     athleteId: string,
-    reason: 'medical' | 'disciplinary',
+    reason: 'medical' | 'no_show',
   ) => {
     const response = await api.post(`/live/competitions/${competitionId}/withdraw`, {
       athlete_id: athleteId,
