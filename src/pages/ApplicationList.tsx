@@ -308,6 +308,20 @@ const ApplicationList = () => {
     refetchOnWindowFocus: false,
   });
 
+  const athleteRegionName = useMemo(() => {
+    const direct = String((selectedAppDetails as any)?.athlete_region || '').trim();
+    if (direct) return direct;
+
+    const regionId = String(
+      editLocation.region_id || (selectedAppDetails as any)?.athlete_location_id || '',
+    ).trim();
+    if (!regionId) return '';
+
+    const found = (regions || []).find((r: any) => String(r?.id) === regionId);
+    const name = found ? String(found?.name || '').trim() : '';
+    return name;
+  }, [editLocation.region_id, regions, selectedAppDetails]);
+
   const updateApplicationMutation = useMutation({
     mutationFn: ({
       appId,
@@ -1052,7 +1066,7 @@ const ApplicationList = () => {
                   <strong>Тренер:</strong> {selectedAppDetails.coach_name || 'Не указан'}
                 </Typography>
                 <Typography>
-                  <strong>Город/село:</strong> {selectedAppDetails.athlete_city || 'Не указано'}
+                  <strong>Регион:</strong> {athleteRegionName || 'Не указано'}
                 </Typography>
 
                 {editProfile ? (
