@@ -69,6 +69,8 @@ type Application = {
   id: string;
   created_at?: string | null;
   athlete_name?: string | null;
+  athlete_location_id?: string | null;
+  athlete_region?: string | null;
   athlete_city?: string | null;
   category_description?: string | null;
   declared_weight?: number | null;
@@ -105,6 +107,7 @@ const ApplicationList = () => {
   const [addExistingAthlete, setAddExistingAthlete] = useState<any | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | ApplicationStatus>('all');
+  const [regionFilter, setRegionFilter] = useState<'all' | string>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | string>('all');
   const [sortField, setSortField] = useState<
     'created_at' | 'athlete_name' | 'category' | 'status' | 'weight' | 'draw_number'
@@ -333,6 +336,7 @@ const ApplicationList = () => {
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setCurrentTab(newValue);
     setStatusFilter('all');
+    setRegionFilter('all');
   };
 
   const categoryLabelById = useMemo(() => {
@@ -384,6 +388,16 @@ const ApplicationList = () => {
   const relevantStatuses: ApplicationStatus[] =
     currentTab === 0 ? ['pending', 'rejected'] : ['approved', 'weighed'];
 
+  const regionOptions = useMemo(() => {
+    const base = currentTab === 0 ? pendingAndRejectedApps : mandateApps;
+    const uniq = new Set<string>();
+    for (const a of base as any[]) {
+      const r = String((a as any)?.athlete_region || '').trim();
+      if (r) uniq.add(r);
+    }
+    return Array.from(uniq).sort((a, b) => a.localeCompare(b, 'ru'));
+  }, [currentTab, mandateApps, pendingAndRejectedApps]);
+
   const visibleApps = useMemo(() => {
     const base = currentTab === 0 ? pendingAndRejectedApps : mandateApps;
     const q = searchText.trim().toLowerCase();
@@ -392,6 +406,7 @@ const ApplicationList = () => {
       if (!q) return true;
       const parts = [
         app.athlete_name,
+        app.athlete_region,
         app.athlete_city,
         app.athlete_email,
         app.athlete_phone,
@@ -410,6 +425,7 @@ const ApplicationList = () => {
 
     let out = base.filter((app: any) => {
       if (statusFilter !== 'all' && app.status !== statusFilter) return false;
+      if (regionFilter !== 'all' && String(app.athlete_region || '') !== regionFilter) return false;
       if (categoryFilter !== 'all' && app.category_id !== categoryFilter) return false;
       if (!matchesQuery(app)) return false;
       return true;
@@ -467,6 +483,7 @@ const ApplicationList = () => {
     getCategoryLabel,
     mandateApps,
     pendingAndRejectedApps,
+    regionFilter,
     searchText,
     sortDir,
     sortField,
@@ -528,7 +545,7 @@ const ApplicationList = () => {
 
       <Paper sx={{ p: 2, mb: 2 }}>
         <Grid container spacing={2} alignItems='center'>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={3}>
             <TextField
               label='Поиск'
               value={searchText}
@@ -536,7 +553,7 @@ const ApplicationList = () => {
               fullWidth
             />
           </Grid>
-          <Grid item xs={12} md={3}>
+          <Grid item xs={12} md={2}>
             <FormControl fullWidth>
               <InputLabel>Статус</InputLabel>
               <Select
@@ -554,6 +571,23 @@ const ApplicationList = () => {
                         : s === 'approved'
                           ? 'Одобрена'
                           : 'Взвешен'}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <FormControl fullWidth>
+              <InputLabel>Регион</InputLabel>
+              <Select
+                value={regionFilter}
+                label='Регион'
+                onChange={(e) => setRegionFilter(String(e.target.value) as any)}
+              >
+                <MenuItem value='all'>Все</MenuItem>
+                {regionOptions.map((r) => (
+                  <MenuItem key={r} value={r}>
+                    {r}
                   </MenuItem>
                 ))}
               </Select>
