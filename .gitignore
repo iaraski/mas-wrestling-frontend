@@ -10,8 +10,19 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+.vite
+.cache
+.eslintcache
+coverage
+.nyc_output
+test-results
+playwright-report
+cypress/videos
+cypress/screenshots
 *.local
 .env
+.env.*
+*.tsbuildinfo
 
 # Editor directories and files
 .vscode/*
@@ -26,4 +37,5 @@ dist-ssr
 
 # Prevent accidental TS->JS output in src/
 src/**/*.js
+src/**/*.js.map
 src/**/*.js.map

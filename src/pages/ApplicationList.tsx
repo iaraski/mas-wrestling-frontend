@@ -101,6 +101,7 @@ const ApplicationList = () => {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [currentTab, setCurrentTab] = useState<number>(0);
   const [imageLoaded, setImageLoaded] = useState<boolean>(false);
+  const [passportScanLoaded, setPassportScanLoaded] = useState<boolean>(false);
   const [addExistingOpen, setAddExistingOpen] = useState(false);
   const [addExistingSearchText, setAddExistingSearchText] = useState('');
   const [addExistingSearchQuery, setAddExistingSearchQuery] = useState('');
@@ -150,7 +151,52 @@ const ApplicationList = () => {
   // Reset image loader only when a different application is selected
   useEffect(() => {
     setImageLoaded(false);
+    setPassportScanLoaded(false);
   }, [selectedAppId]);
+
+  const formatRuDate = useCallback((value: unknown) => {
+    const s = String(value ?? '').trim();
+    if (!s) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const [y, m, d] = s.split('-');
+      return `${d}.${m}.${y}`;
+    }
+    return s;
+  }, []);
+
+  const formatGenderLabel = useCallback((value: unknown) => {
+    const s = String(value ?? '')
+      .trim()
+      .toLowerCase();
+    if (!s) return '';
+    if (s === 'male' || s === 'm' || s === 'м') return 'Мужской';
+    if (s === 'female' || s === 'f' || s === 'ж') return 'Женский';
+    return String(value ?? '');
+  }, []);
+
+  const resolveDocumentUrl = useCallback((value: unknown) => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    if (raw.startsWith('http')) return raw;
+    if (raw.includes('documents/')) {
+      return supabase.storage.from('avatars').getPublicUrl(raw).data.publicUrl;
+    }
+    const apiBaseUrl = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+    if (raw.startsWith('/api/')) return `${apiBaseUrl}${raw}`;
+    if (raw.startsWith('/')) return `${apiBaseUrl}/api/v1${raw}`;
+    return `${apiBaseUrl}/api/v1/tg-file/${raw}`;
+  }, []);
+
+  const isLikelyImageRef = useCallback((value: unknown) => {
+    const s = String(value ?? '')
+      .trim()
+      .toLowerCase();
+    if (!s) return false;
+    if (s.includes('documents/')) return true;
+    if (s.startsWith('/applications/photo/')) return true;
+    if (/\.(png|jpe?g|gif|webp)$/.test(s)) return true;
+    return false;
+  }, []);
 
   const { data: athletesForAdd, isLoading: athletesForAddLoading } = useQuery<any[]>({
     queryKey: ['athletes_for_add', addExistingSearchQuery, addExistingOpen],
@@ -322,6 +368,48 @@ const ApplicationList = () => {
       });
     },
     onSuccess: () => {
+      if (selectedAppId) {
+        queryClient.setQueryData(['applicationDetails', selectedAppId], (prev: any) => {
+          if (!prev) return prev;
+          const nextPassport = {
+            ...(prev.passport || {}),
+            series: editForm.series || null,
+            number: editForm.number || null,
+            issued_by: editForm.issued_by || null,
+            issue_date: editForm.issue_date || null,
+            birth_date: editForm.birth_date || null,
+            gender: editForm.gender || null,
+            rank: editForm.rank || null,
+            photo_url: editForm.photo_url || null,
+            passport_scan_url: editForm.passport_scan_url || null,
+          };
+          return {
+            ...prev,
+            athlete_name: editForm.full_name,
+            athlete_phone: editForm.phone,
+            athlete_email: editForm.email,
+            athlete_city: editForm.city,
+            athlete_location_id: editForm.location_id,
+            coach_name: editForm.coach_name,
+            passport: nextPassport,
+          };
+        });
+
+        if (compId) {
+          queryClient.setQueryData(['applications', compId], (prev: any) => {
+            if (!Array.isArray(prev)) return prev;
+            return prev.map((a) => {
+              if (!a || a.id !== selectedAppId) return a;
+              return {
+                ...a,
+                athlete_name: editForm.full_name,
+                athlete_city: editForm.city,
+                athlete_location_id: editForm.location_id,
+              };
+            });
+          });
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ['applicationDetails', selectedAppId] });
       queryClient.invalidateQueries({ queryKey: ['applications', compId] });
       setEditProfile(false);
@@ -1181,6 +1269,101 @@ const ApplicationList = () => {
 
                 {!editProfile ? (
                   <>
+                    <Typography variant='h6' gutterBottom>
+                      Паспорт
+                    </Typography>
+                    <Typography>
+                      <strong>Серия:</strong>{' '}
+                      {selectedAppDetails.passport?.series
+                        ? selectedAppDetails.passport.series
+                        : 'Не указана'}
+                    </Typography>
+                    <Typography>
+                      <strong>Номер:</strong>{' '}
+                      {selectedAppDetails.passport?.number
+                        ? selectedAppDetails.passport.number
+                        : 'Не указан'}
+                    </Typography>
+                    <Typography>
+                      <strong>Кем выдан:</strong>{' '}
+                      {selectedAppDetails.passport?.issued_by
+                        ? selectedAppDetails.passport.issued_by
+                        : 'Не указано'}
+                    </Typography>
+                    <Typography>
+                      <strong>Дата выдачи:</strong>{' '}
+                      {selectedAppDetails.passport?.issue_date
+                        ? formatRuDate(selectedAppDetails.passport.issue_date)
+                        : 'Не указана'}
+                    </Typography>
+                    <Typography>
+                      <strong>Дата рождения:</strong>{' '}
+                      {selectedAppDetails.passport?.birth_date
+                        ? formatRuDate(selectedAppDetails.passport.birth_date)
+                        : 'Не указана'}
+                    </Typography>
+                    <Typography>
+                      <strong>Пол:</strong>{' '}
+                      {selectedAppDetails.passport?.gender
+                        ? formatGenderLabel(selectedAppDetails.passport.gender)
+                        : 'Не указан'}
+                    </Typography>
+                    <Typography>
+                      <strong>Разряд / звание:</strong>{' '}
+                      {selectedAppDetails.passport?.rank
+                        ? selectedAppDetails.passport.rank
+                        : 'Не указан'}
+                    </Typography>
+                    <Box mt={1} mb={1}>
+                      {selectedAppDetails.passport?.passport_scan_url ? (
+                        <>
+                          <Button
+                            variant='outlined'
+                            href={resolveDocumentUrl(selectedAppDetails.passport.passport_scan_url)}
+                            target='_blank'
+                            rel='noreferrer'
+                            fullWidth
+                          >
+                            Открыть скан паспорта
+                          </Button>
+                          {isLikelyImageRef(selectedAppDetails.passport.passport_scan_url) ? (
+                            <Box mt={1}>
+                              {!passportScanLoaded && (
+                                <Skeleton
+                                  variant='rectangular'
+                                  width='100%'
+                                  height={200}
+                                  sx={{ borderRadius: '4px' }}
+                                />
+                              )}
+                              <Box
+                                component='img'
+                                src={resolveDocumentUrl(
+                                  selectedAppDetails.passport.passport_scan_url,
+                                )}
+                                alt='Скан паспорта'
+                                onLoad={() => setPassportScanLoaded(true)}
+                                onError={() => setPassportScanLoaded(true)}
+                                sx={{
+                                  width: '100%',
+                                  maxHeight: '300px',
+                                  objectFit: 'contain',
+                                  display: passportScanLoaded ? 'block' : 'none',
+                                  borderRadius: '4px',
+                                  border: '1px solid #eee',
+                                  mt: 1,
+                                }}
+                              />
+                            </Box>
+                          ) : null}
+                        </>
+                      ) : (
+                        <Typography color='text.secondary'>Скан паспорта не загружен</Typography>
+                      )}
+                    </Box>
+
+                    <Divider sx={{ my: 2 }} />
+
                     <Typography variant='h6' gutterBottom>
                       Фото 3×4
                     </Typography>

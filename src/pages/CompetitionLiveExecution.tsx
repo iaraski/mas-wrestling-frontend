@@ -33,6 +33,11 @@ import {
   RadioGroup,
   Select,
   Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   Tabs,
   Tooltip,
   Typography,
@@ -50,6 +55,8 @@ type LiveBout = {
   athlete_blue_id: string;
   athlete_red_name?: string;
   athlete_blue_name?: string;
+  athlete_red_team?: string;
+  athlete_blue_team?: string;
   bracket_type: 'round_robin' | 'double_elim';
   round_index: number;
   stage: string | null;
@@ -138,6 +145,7 @@ type CompetitionResults = {
       athlete_id: string;
       name: string;
       weight?: number | null;
+      team?: string | null;
       win_points?: number;
       loss_points?: number;
       diff_points?: number;
@@ -167,12 +175,11 @@ export default function CompetitionLiveExecution() {
   const [withdrawReason, setWithdrawReason] = useState<'medical' | 'no_show'>('medical');
   const resultsRefetchTimerRef = useRef<number | null>(null);
   const resultsCommitTimerRef = useRef<number | null>(null);
+  const liveRefetchTimerRef = useRef<number | null>(null);
   const latestResultsRef = useRef<CompetitionResults | null>(null);
   const [stableResults, setStableResults] = useState<CompetitionResults | null>(null);
   const formatWeight = (w?: number | null) =>
-    typeof w === 'number' && Number.isFinite(w)
-      ? w.toFixed(2).replace(/\.?0+$/, '')
-      : '—';
+    typeof w === 'number' && Number.isFinite(w) ? w.toFixed(2).replace(/\.?0+$/, '') : '—';
 
   const liveQuery = useQuery<LiveState>({
     queryKey: ['live_state', compId, selectedDayIndex || null],
@@ -254,6 +261,17 @@ export default function CompetitionLiveExecution() {
     }, 700);
   }, [compId, queryClient, showResultsView]);
 
+  const scheduleLiveRefetch = useCallback(() => {
+    if (!compId) return;
+    if (liveRefetchTimerRef.current) {
+      window.clearTimeout(liveRefetchTimerRef.current);
+    }
+    liveRefetchTimerRef.current = window.setTimeout(() => {
+      queryClient.refetchQueries({ queryKey: ['live_state', compId] });
+      liveRefetchTimerRef.current = null;
+    }, 450);
+  }, [compId, queryClient]);
+
   useEffect(() => {
     if (!compId) return;
 
@@ -270,6 +288,7 @@ export default function CompetitionLiveExecution() {
         () => {
           queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
           queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
+          scheduleLiveRefetch();
           scheduleResultsRefetch();
         },
       )
@@ -284,6 +303,7 @@ export default function CompetitionLiveExecution() {
         () => {
           queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
           queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
+          scheduleLiveRefetch();
           scheduleResultsRefetch();
         },
       )
@@ -314,7 +334,7 @@ export default function CompetitionLiveExecution() {
       }
       supabase.removeChannel(channel);
     };
-  }, [compId, queryClient, scheduleResultsRefetch, showResultsView]);
+  }, [compId, queryClient, scheduleLiveRefetch, scheduleResultsRefetch, showResultsView]);
 
   const generateMutation = useMutation({
     mutationFn: async (): Promise<GenerateLiveResponse> => {
@@ -392,6 +412,7 @@ export default function CompetitionLiveExecution() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      scheduleLiveRefetch();
       setWithdrawOpen(false);
       setWithdrawAthleteId(null);
       setWithdrawAthleteLabel('');
@@ -411,6 +432,7 @@ export default function CompetitionLiveExecution() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      scheduleLiveRefetch();
     },
     onError: (err: any) => {
       const msg =
@@ -433,6 +455,7 @@ export default function CompetitionLiveExecution() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      scheduleLiveRefetch();
     },
     onError: (err: any) => {
       const msg =
@@ -447,6 +470,7 @@ export default function CompetitionLiveExecution() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      scheduleLiveRefetch();
     },
     onError: (err: any) => {
       const msg =
@@ -461,6 +485,7 @@ export default function CompetitionLiveExecution() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      scheduleLiveRefetch();
     },
     onError: (err: any) => {
       const detail = err?.response?.data?.detail || err?.response?.data?.message || '';
@@ -478,6 +503,7 @@ export default function CompetitionLiveExecution() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      scheduleLiveRefetch();
     },
     onError: (err: any) => {
       const msg =
@@ -527,8 +553,12 @@ export default function CompetitionLiveExecution() {
   const boutNames = (bout: LiveBout) => {
     const a = bout.athlete_red_name || bout.athlete_red_id;
     const b = bout.athlete_blue_name || bout.athlete_blue_id;
+    const ta = bout.athlete_red_team || '';
+    const tb = bout.athlete_blue_team || '';
+    const aLabel = ta ? `${a} (${ta})` : `${a}`;
+    const bLabel = tb ? `${b} (${tb})` : `${b}`;
     if (isByeBout(bout)) return `${a}`;
-    return `${a} vs ${b}`;
+    return `${aLabel} vs ${bLabel}`;
   };
 
   const boutScore = (bout: LiveBout) => {
@@ -569,10 +599,21 @@ export default function CompetitionLiveExecution() {
     const queue = currentMatState.queue.filter(
       (b) => b.status !== 'cancelled' && (b.status !== 'done' || isByeBout(b)),
     );
+    const groupRank = (bout: LiveBout) => {
+      if (bout.bracket_type !== 'double_elim') return 0;
+      const s = String(bout.stage || '').toLowerCase();
+      if (s.startsWith('lb') || s.startsWith('bye_lb')) return 0;
+      if (s === 'wb' || s.startsWith('bye_wb') || s === 'bye') return 1;
+      if (s.startsWith('final') || s === 'semifinal') return 2;
+      return 3;
+    };
     const sorted = [...queue].sort((a, b) => {
       const ra = a.round_index || 0;
       const rb = b.round_index || 0;
       if (ra !== rb) return ra - rb;
+      const ga = groupRank(a);
+      const gb = groupRank(b);
+      if (ga !== gb) return ga - gb;
       const ba = isByeBout(a) ? 1 : 0;
       const bb = isByeBout(b) ? 1 : 0;
       if (ba !== bb) return ba - bb;
@@ -675,7 +716,6 @@ export default function CompetitionLiveExecution() {
     }
 
     const results = stableResults || resultsQuery.data!;
-    const champions = results.champions || [];
     const finishedCategories = (results.categories || []).filter((c) => c.is_finished);
 
     return (
@@ -707,29 +747,7 @@ export default function CompetitionLiveExecution() {
         </Typography>
 
         <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant='h6' gutterBottom>
-                Победители (общий список)
-              </Typography>
-              {champions.length === 0 ? (
-                <Typography color='textSecondary'>Нет данных.</Typography>
-              ) : (
-                <List dense>
-                  {champions.map((c) => (
-                    <ListItem key={`${c.category_id}:${c.athlete_id}`} disableGutters>
-                      <ListItemText
-                        primary={c.name || '—'}
-                        secondary={c.category_label || c.category_id}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-            </Paper>
-          </Grid>
-
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12}>
             <Paper sx={{ p: 2 }}>
               <Typography variant='h6' gutterBottom>
                 Призёры по категориям
@@ -742,19 +760,34 @@ export default function CompetitionLiveExecution() {
                     <Box key={cat.category_id}>
                       <Typography variant='subtitle1'>{cat.label || cat.category_id}</Typography>
                       {cat.winners?.length ? (
-                        <List dense>
-                          {cat.winners.map((w) => (
-                            <ListItem
-                              key={`${cat.category_id}:${w.place}:${w.athlete_id}`}
-                              disableGutters
-                            >
-                              <ListItemText
-                                primary={`${w.place}. ${w.name || '—'} (${formatWeight(w.weight)} кг)`}
-                                secondary={`Победы: ${w.win_points ?? 0} • Поражения: ${w.loss_points ?? 0} • Разница: ${w.diff_points ?? 0}`}
-                              />
-                            </ListItem>
-                          ))}
-                        </List>
+                        <Box sx={{ overflowX: 'auto' }}>
+                          <Table size='small' sx={{ mt: 1, minWidth: 760 }}>
+                            <TableHead>
+                              <TableRow>
+                                <TableCell sx={{ width: 70 }}>Место</TableCell>
+                                <TableCell>ФИО</TableCell>
+                                <TableCell sx={{ width: 110 }}>Вес</TableCell>
+                                <TableCell>Команда</TableCell>
+                                <TableCell sx={{ width: 150 }}>Победы</TableCell>
+                                <TableCell sx={{ width: 160 }}>Поражения</TableCell>
+                                <TableCell sx={{ width: 110 }}>Разница</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {cat.winners.map((w) => (
+                                <TableRow key={`${cat.category_id}:${w.place}:${w.athlete_id}`}>
+                                  <TableCell>{w.place}</TableCell>
+                                  <TableCell>{w.name || '—'}</TableCell>
+                                  <TableCell>{`${formatWeight(w.weight)} кг`}</TableCell>
+                                  <TableCell>{w.team || '—'}</TableCell>
+                                  <TableCell>{w.win_points ?? 0}</TableCell>
+                                  <TableCell>{w.loss_points ?? 0}</TableCell>
+                                  <TableCell>{w.diff_points ?? 0}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </Box>
                       ) : (
                         <Typography color='textSecondary'>Нет данных.</Typography>
                       )}

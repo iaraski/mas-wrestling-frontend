@@ -1,15 +1,54 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabase';
 
+const decodeBase64UrlJson = (value: string): any => {
+  const base64 = String(value || '')
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+    .padEnd(Math.ceil(String(value || '').length / 4) * 4, '=');
+  const decoded = atob(base64);
+  return JSON.parse(decoded);
+};
+
+const getJwtExpSeconds = (token: string): number | null => {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const payload = decodeBase64UrlJson(parts[1]);
+    const exp = payload?.exp;
+    const n = Number(exp);
+    if (!Number.isFinite(n)) return null;
+    return n;
+  } catch {
+    return null;
+  }
+};
+
+const isJwtExpired = (token: string, skewSeconds = 15): boolean => {
+  const exp = getJwtExpSeconds(token);
+  if (!exp) return true;
+  const now = Math.floor(Date.now() / 1000);
+  return now >= exp - Math.max(0, skewSeconds);
+};
+
 const api = axios.create({
   baseURL: `${String(import.meta.env.VITE_API_URL).replace(/\/$/, '')}/api/v1`,
 });
 
 api.interceptors.request.use(async (config) => {
   const token = localStorage.getItem('auth_access_token');
-  if (token) {
+  if (token && !isJwtExpired(token)) {
     config.headers.Authorization = `Bearer ${token}`;
     return config;
+  }
+  if (token && isJwtExpired(token)) {
+    try {
+      localStorage.removeItem('auth_access_token');
+      localStorage.removeItem('last_role');
+    } catch (e) {
+      void e;
+    }
+    window.dispatchEvent(new Event('auth_token_cleared'));
   }
   const {
     data: { session },
@@ -19,6 +58,35 @@ api.interceptors.request.use(async (config) => {
   }
   return config;
 });
+
+api.interceptors.response.use(
+  (resp) => resp,
+  async (error) => {
+    const status = error?.response?.status;
+    const originalRequest = error?.config as any;
+    if (status === 401 && originalRequest && !originalRequest.__retry401) {
+      originalRequest.__retry401 = true;
+      try {
+        localStorage.removeItem('auth_access_token');
+        localStorage.removeItem('last_role');
+      } catch (e) {
+        void e;
+      }
+      window.dispatchEvent(new Event('auth_token_cleared'));
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (token) {
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers.Authorization = `Bearer ${token}`;
+        return api.request(originalRequest);
+      }
+    }
+    return Promise.reject(error);
+  },
+);
 
 type CompetitionCreatePayload = {
   name: string;

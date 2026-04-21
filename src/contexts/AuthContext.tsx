@@ -2,6 +2,36 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { supabase } from '../lib/supabase';
 import api from '../services/api';
 
+const decodeBase64UrlJson = (value: string): any => {
+  const base64 = String(value || '')
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+    .padEnd(Math.ceil(String(value || '').length / 4) * 4, '=');
+  const decoded = atob(base64);
+  return JSON.parse(decoded);
+};
+
+const getJwtExpSeconds = (token: string): number | null => {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const payload = decodeBase64UrlJson(parts[1]);
+    const exp = payload?.exp;
+    const n = Number(exp);
+    if (!Number.isFinite(n)) return null;
+    return n;
+  } catch {
+    return null;
+  }
+};
+
+const isJwtExpired = (token: string, skewSeconds = 15): boolean => {
+  const exp = getJwtExpSeconds(token);
+  if (!exp) return true;
+  const now = Math.floor(Date.now() / 1000);
+  return now >= exp - Math.max(0, skewSeconds);
+};
+
 type AuthUser = {
   id: string;
   email?: string | null;
@@ -85,15 +115,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const setAuthToken = useCallback(
     async (token: string) => {
-    localStorage.setItem('auth_access_token', token);
-    setAccessToken(token);
-    try {
-      const cached = localStorage.getItem('last_role');
-      if (cached) setRole(cached);
-    } catch (e) {
-      void e;
-    }
-    await fetchUserRole(token);
+      localStorage.setItem('auth_access_token', token);
+      setAccessToken(token);
+      try {
+        const cached = localStorage.getItem('last_role');
+        if (cached) setRole(cached);
+      } catch (e) {
+        void e;
+      }
+      await fetchUserRole(token);
     },
     [fetchUserRole],
   );
@@ -103,8 +133,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(true);
       try {
         const token = localStorage.getItem('auth_access_token');
-        if (token) {
+        if (token && !isJwtExpired(token)) {
           await setAuthToken(token);
+        } else if (token && isJwtExpired(token)) {
+          try {
+            localStorage.removeItem('auth_access_token');
+            localStorage.removeItem('last_role');
+          } catch (e) {
+            void e;
+          }
+          setAccessToken(null);
         } else {
           const {
             data: { session },
@@ -140,7 +178,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     });
 
-    return () => subscription.unsubscribe();
+    const onTokenCleared = () => {
+      const local = localStorage.getItem('auth_access_token');
+      if (local) return;
+      setAccessToken(null);
+      setRole(null);
+      setUser(null);
+    };
+    window.addEventListener('auth_token_cleared', onTokenCleared);
+
+    return () => {
+      window.removeEventListener('auth_token_cleared', onTokenCleared);
+      subscription.unsubscribe();
+    };
   }, [fetchUserRole, setAuthToken]);
 
   const signIn = async (email: string, password: string) => {
