@@ -113,6 +113,10 @@ const ApplicationList = () => {
     'created_at' | 'athlete_name' | 'category' | 'status' | 'weight' | 'draw_number'
   >('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportGroupBy, setExportGroupBy] = useState<
+    'region' | 'category' | 'status' | 'draw_number'
+  >('region');
   const [editProfile, setEditProfile] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: '',
@@ -218,6 +222,22 @@ const ApplicationList = () => {
       setEditProfile(false);
     }
   }, [selectedAppDetails, selectedAppId]);
+
+  const handleExport = useCallback(() => {
+    if (!compId) return;
+    const apiBaseUrl = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+    const url = `${apiBaseUrl}/api/v1/live/competitions/${compId}/applications/export.csv?group_by=${encodeURIComponent(
+      exportGroupBy,
+    )}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setExportOpen(false);
+  }, [compId, exportGroupBy]);
 
   const { data: countries } = useQuery<any[]>({
     queryKey: ['locations', 'country'],
@@ -644,8 +664,11 @@ const ApplicationList = () => {
               </Select>
             </FormControl>
           </Grid>
-          {currentTab === 1 ? (
-            <Grid item xs={12} md={12} display='flex' justifyContent='flex-end' gap={1}>
+          <Grid item xs={12} display='flex' justifyContent='flex-end' gap={1}>
+            <Button variant='outlined' onClick={() => setExportOpen(true)}>
+              Выгрузить заявки
+            </Button>
+            {currentTab === 1 ? (
               <Button
                 variant='contained'
                 onClick={() => {
@@ -657,8 +680,8 @@ const ApplicationList = () => {
               >
                 Добавить из пользователей
               </Button>
-            </Grid>
-          ) : null}
+            ) : null}
+          </Grid>
         </Grid>
       </Paper>
 
@@ -761,6 +784,31 @@ const ApplicationList = () => {
           </Table>
         </TableContainer>
       )}
+
+      <Dialog open={exportOpen} onClose={() => setExportOpen(false)} maxWidth='xs' fullWidth>
+        <DialogTitle>Выгрузка заявок</DialogTitle>
+        <DialogContent dividers>
+          <FormControl fullWidth>
+            <InputLabel>Сортировать по</InputLabel>
+            <Select
+              value={exportGroupBy}
+              label='Сортировать по'
+              onChange={(e) => setExportGroupBy(e.target.value as any)}
+            >
+              <MenuItem value='region'>Регион</MenuItem>
+              <MenuItem value='category'>Категория</MenuItem>
+              <MenuItem value='status'>Статус</MenuItem>
+              <MenuItem value='draw_number'>Жеребьёвка</MenuItem>
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExportOpen(false)}>Отмена</Button>
+          <Button variant='contained' onClick={handleExport} disabled={!compId}>
+            Выгрузить
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={addExistingOpen}
