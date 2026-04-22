@@ -60,6 +60,8 @@ type LiveBout = {
   bracket_type: 'round_robin' | 'double_elim';
   round_index: number;
   stage: string | null;
+  is_final?: boolean;
+  is_tiebreak?: boolean;
   status: 'queued' | 'next' | 'running' | 'done' | 'cancelled';
   winner_athlete_id: string | null;
   mat_number: number;
@@ -582,6 +584,8 @@ export default function CompetitionLiveExecution() {
     const catLabel = categoryLabelMap.get(bout.category_id) || '';
     const parts = [catLabel, `Круг ${bout.round_index}`];
     if (bout.bracket_type === 'double_elim') {
+      if (bout.is_final) parts.push('Финал');
+      if (bout.is_tiebreak) parts.push('Стыковой');
       const s = (bout.stage || '').toLowerCase();
       if (s === 'wb' || s.startsWith('bye_wb') || s === 'bye') {
         parts.push('Группа А');
@@ -1360,6 +1364,9 @@ export default function CompetitionLiveExecution() {
                                       grpLabel = 'Группа Б';
                                     else if (grp.startsWith('final') || grp === 'semifinal')
                                       grpLabel = 'Финалы';
+                                    if (b.is_final) grpLabel = grpLabel ? `${grpLabel} • Финал` : 'Финал';
+                                    if (b.is_tiebreak)
+                                      grpLabel = grpLabel ? `${grpLabel} • Стыковой` : 'Стыковой';
 
                                     return (
                                       <Box
@@ -1463,11 +1470,11 @@ export default function CompetitionLiveExecution() {
                             color='warning'
                             onClick={() => {
                               const ok = window.confirm(
-                                'Откатить результаты до этого поединка (включительно)?',
+                                'Сбросить этот поединок? Результаты будут очищены, связанные последующие поединки будут пересчитаны.',
                               );
-                              if (ok) rollbackMutation.mutate({ toBoutId: b.id });
+                              if (ok) cancelMutation.mutate(b.id);
                             }}
-                            disabled={rollbackMutation.isPending || hasRunningBout}
+                            disabled={cancelMutation.isPending || hasRunningBout}
                           >
                             Откатить
                           </Button>
