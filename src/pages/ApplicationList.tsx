@@ -661,7 +661,7 @@ const ApplicationList = () => {
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={currentTab} onChange={handleTabChange} aria-label='application tabs'>
           <Tab label={`Заявки (${pendingAndRejectedApps.length})`} />
-          <Tab label={`Мандатная комиссия (${mandateApps.length})`} />
+          <Tab label={`Взвешивание (${mandateApps.length})`} />
         </Tabs>
       </Box>
 
@@ -687,11 +687,11 @@ const ApplicationList = () => {
                 {relevantStatuses.map((s) => (
                   <MenuItem key={s} value={s}>
                     {s === 'pending'
-                      ? 'Ожидает'
+                      ? 'Верификация'
                       : s === 'rejected'
                         ? 'Отклонена'
                         : s === 'approved'
-                          ? 'Одобрена'
+                          ? 'Ожидает взвешивания'
                           : 'Взвешен'}
                   </MenuItem>
                 ))}
@@ -805,7 +805,7 @@ const ApplicationList = () => {
                   <TableCell>{getCategoryLabel(app.category_id)}</TableCell>
                   <TableCell>
                     <Chip
-                      label={app.status === 'pending' ? 'Ожидает' : 'Отклонена'}
+                      label={app.status === 'pending' ? 'Верификация' : 'Отклонена'}
                       color={app.status === 'pending' ? 'warning' : 'error'}
                       size='small'
                     />
@@ -856,7 +856,7 @@ const ApplicationList = () => {
                   <TableCell>{app.actual_weight ? `${app.actual_weight} кг` : '-'}</TableCell>
                   <TableCell>
                     <Chip
-                      label={app.status === 'weighed' ? 'Взвешен' : 'Одобрена'}
+                      label={app.status === 'weighed' ? 'Взвешен' : 'Ожидает взвешивания'}
                       color={app.status === 'weighed' ? 'success' : 'info'}
                       size='small'
                     />
@@ -869,7 +869,7 @@ const ApplicationList = () => {
                         startIcon={<VisibilityIcon />}
                         onClick={() => setSelectedAppId(app.id)}
                       >
-                        Мандатная
+                        Взвешивание
                       </Button>
                     </Box>
                   </TableCell>
@@ -1484,10 +1484,14 @@ const ApplicationList = () => {
                       <Chip
                         label={
                           selectedAppDetails.status === 'pending'
-                            ? 'Ожидает'
+                            ? 'Верификация'
                             : selectedAppDetails.status === 'rejected'
                               ? 'Отклонена'
-                              : 'Одобрена'
+                              : selectedAppDetails.status === 'approved'
+                                ? 'Ожидает взвешивания'
+                                : selectedAppDetails.status === 'weighed'
+                                  ? 'Взвешен'
+                                  : 'Другой'
                         }
                         color={
                           selectedAppDetails.status === 'pending'
@@ -1514,7 +1518,7 @@ const ApplicationList = () => {
                     <Divider sx={{ my: 2 }} />
 
                     <Typography variant='subtitle1' gutterBottom>
-                      Итоги мандатной комиссии
+                      Итоги взвешивания
                     </Typography>
 
                     <Box display='flex' gap={2} mb={2} flexDirection='column'>
@@ -1598,7 +1602,7 @@ const ApplicationList = () => {
                   }
                   disabled={updateApplicationMutation.isPending}
                 >
-                  Одобрить участие
+                  Допустить к взвешиванию
                 </Button>
                 <Button
                   variant='outlined'
