@@ -799,7 +799,7 @@ function CompetitionsTab({
   >;
 }) {
   const queryClient = useQueryClient();
-  const deadline = new Date('2026-04-23T00:00:00+03:00');
+  const deadline = new Date('2026-04-24T19:00:00+03:00');
   const deadlinePassed = new Date() >= deadline;
   const { data: competitions, isLoading } = useQuery({
     queryKey: ['active_competitions'],
@@ -956,7 +956,7 @@ function CompetitionsTab({
                     if (deadlinePassed) {
                       setNotice({
                         severity: 'info',
-                        message: 'Подача заявок закрыта (после 22 апреля 23:59).',
+                        message: 'Подача заявок закрыта (после 24 апреля 19:00).',
                       });
                       return;
                     }
