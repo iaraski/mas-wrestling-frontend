@@ -305,7 +305,8 @@ export default function PublicMatQueue() {
             display='grid'
             gap={2}
             sx={{
-              gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+              gridTemplateColumns:
+                matsCount >= 3 ? 'repeat(3, minmax(0, 1fr))' : `repeat(${matsCount}, minmax(0, 1fr))`,
               alignItems: 'start',
             }}
           >
