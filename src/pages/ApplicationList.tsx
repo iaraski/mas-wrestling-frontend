@@ -1678,7 +1678,9 @@ const ApplicationList = () => {
           <Button onClick={() => setSelectedAppId(null)}>Закрыть</Button>
 
           <Box display='flex' gap={1}>
-            {currentTab === 0 && selectedAppDetails?.status === 'pending' && (
+            {currentTab === 0 &&
+              (selectedAppDetails?.status === 'pending' ||
+                selectedAppDetails?.status === 'rejected') && (
               <>
                 <Button
                   variant='contained'
@@ -1694,20 +1696,22 @@ const ApplicationList = () => {
                 >
                   Допустить к взвешиванию
                 </Button>
-                <Button
-                  variant='outlined'
-                  color='error'
-                  startIcon={<CloseIcon />}
-                  onClick={() =>
-                    updateApplicationMutation.mutate({
-                      appId: selectedAppDetails.id,
-                      status: 'rejected',
-                    })
-                  }
-                  disabled={updateApplicationMutation.isPending}
-                >
-                  Отклонить
-                </Button>
+                {selectedAppDetails?.status !== 'rejected' ? (
+                  <Button
+                    variant='outlined'
+                    color='error'
+                    startIcon={<CloseIcon />}
+                    onClick={() =>
+                      updateApplicationMutation.mutate({
+                        appId: selectedAppDetails.id,
+                        status: 'rejected',
+                      })
+                    }
+                    disabled={updateApplicationMutation.isPending}
+                  >
+                    Отклонить
+                  </Button>
+                ) : null}
               </>
             )}
 
