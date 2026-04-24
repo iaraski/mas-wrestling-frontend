@@ -372,11 +372,7 @@ const ApplicationList = () => {
         !editForm.email ||
         !editForm.city ||
         !editForm.location_id ||
-        !editForm.coach_name ||
-        !editForm.birth_date ||
-        !editForm.gender ||
-        !editForm.rank ||
-        (!editForm.photo_url && !pendingPhotoFile)
+        !editForm.coach_name
       ) {
         throw new Error('Заполните обязательные поля профиля.');
       }
@@ -403,14 +399,14 @@ const ApplicationList = () => {
         city: editForm.city,
         location_id: editForm.location_id,
         coach_name: editForm.coach_name,
-        birth_date: editForm.birth_date,
-        gender: editForm.gender,
+        birth_date: editForm.birth_date || null,
+        gender: editForm.gender || null,
         series: editForm.series || null,
         number: editForm.number || null,
         issued_by: editForm.issued_by || null,
         issue_date: editForm.issue_date || null,
-        rank: editForm.rank,
-        photo_url: photoUrlToSave,
+        rank: editForm.rank || null,
+        photo_url: photoUrlToSave || null,
         passport_scan_url: editForm.passport_scan_url || null,
       });
       return { ...res, photo_url: photoUrlToSave };

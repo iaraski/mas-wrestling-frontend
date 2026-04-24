@@ -204,14 +204,14 @@ export const applicationService = {
       city: string;
       location_id: string;
       coach_name: string;
-      birth_date: string;
+      birth_date?: string | null;
       gender?: string | null;
       series?: string | null;
       number?: string | null;
       issued_by?: string | null;
       issue_date?: string | null;
-      rank: string;
-      photo_url: string;
+      rank?: string | null;
+      photo_url?: string | null;
       passport_scan_url?: string | null;
     },
   ) => {
