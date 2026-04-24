@@ -156,6 +156,14 @@ export const applicationService = {
     const response = await api.get(`/applications/${id}`);
     return response.data;
   },
+  uploadPassportPhoto: async (applicationId: string, file: File) => {
+    const form = new FormData();
+    form.append('photo', file);
+    const response = await api.post(`/applications/${applicationId}/passport/photo`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data as { ok: boolean; photo_url: string };
+  },
   updateApplication: async (id: string, data: ApplicationUpdatePayload) => {
     const response = await api.patch(`/applications/${id}/`, data);
     return response.data;

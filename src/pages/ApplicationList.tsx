@@ -136,6 +136,10 @@ const ApplicationList = () => {
     photo_url: '',
     passport_scan_url: '',
   });
+  const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null);
+  const [pendingPhotoPreviewUrl, setPendingPhotoPreviewUrl] = useState<string>('');
+  const [pendingPhotoError, setPendingPhotoError] = useState<string>('');
+  const [pendingPhotoProcessing, setPendingPhotoProcessing] = useState(false);
   const [editLocation, setEditLocation] = useState({
     country_id: '',
     district_id: '',
@@ -152,7 +156,20 @@ const ApplicationList = () => {
   useEffect(() => {
     setImageLoaded(false);
     setPassportScanLoaded(false);
+    setPendingPhotoFile(null);
+    setPendingPhotoError('');
+    setPendingPhotoProcessing(false);
+    setPendingPhotoPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return '';
+    });
   }, [selectedAppId]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingPhotoPreviewUrl) URL.revokeObjectURL(pendingPhotoPreviewUrl);
+    };
+  }, [pendingPhotoPreviewUrl]);
 
   const formatRuDate = useCallback((value: unknown) => {
     const s = String(value ?? '').trim();
@@ -359,11 +376,27 @@ const ApplicationList = () => {
         !editForm.birth_date ||
         !editForm.gender ||
         !editForm.rank ||
-        !editForm.photo_url
+        (!editForm.photo_url && !pendingPhotoFile)
       ) {
         throw new Error('Заполните обязательные поля профиля.');
       }
-      return applicationService.adminUpdateAthleteProfile(selectedAppId, {
+      let photoUrlToSave = editForm.photo_url;
+      if (pendingPhotoFile) {
+        const uploaded = await applicationService.uploadPassportPhoto(
+          selectedAppId,
+          pendingPhotoFile,
+        );
+        photoUrlToSave = uploaded.photo_url;
+        setEditForm((p) => ({ ...p, photo_url: uploaded.photo_url }));
+        setPendingPhotoFile(null);
+        setPendingPhotoError('');
+        setPendingPhotoProcessing(false);
+        setPendingPhotoPreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return '';
+        });
+      }
+      const res = await applicationService.adminUpdateAthleteProfile(selectedAppId, {
         full_name: editForm.full_name,
         phone: editForm.phone,
         email: editForm.email,
@@ -377,12 +410,14 @@ const ApplicationList = () => {
         issued_by: editForm.issued_by || null,
         issue_date: editForm.issue_date || null,
         rank: editForm.rank,
-        photo_url: editForm.photo_url,
+        photo_url: photoUrlToSave,
         passport_scan_url: editForm.passport_scan_url || null,
       });
+      return { ...res, photo_url: photoUrlToSave };
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       if (selectedAppId) {
+        const savedPhotoUrl = data?.photo_url || editForm.photo_url || null;
         queryClient.setQueryData(['applicationDetails', selectedAppId], (prev: any) => {
           if (!prev) return prev;
           const nextPassport = {
@@ -394,7 +429,7 @@ const ApplicationList = () => {
             birth_date: editForm.birth_date || null,
             gender: editForm.gender || null,
             rank: editForm.rank || null,
-            photo_url: editForm.photo_url || null,
+            photo_url: savedPhotoUrl,
             passport_scan_url: editForm.passport_scan_url || null,
           };
           return {
@@ -430,18 +465,54 @@ const ApplicationList = () => {
     },
   });
 
-  const handleEditPhotoUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+  const handleEditPhotoSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const fileExt = file.name.split('.').pop();
-    const fileName = `admin-edit-${Date.now()}-${Math.random()}.${fileExt}`;
-    const filePath = `documents/${fileName}`;
-    const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file, {
-      upsert: true,
-      contentType: file.type || 'image/jpeg',
+
+    setPendingPhotoError('');
+    setPendingPhotoProcessing(false);
+    setPendingPhotoFile(null);
+    setPendingPhotoPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return '';
     });
-    if (uploadError) throw uploadError;
-    setEditForm((p) => ({ ...p, photo_url: filePath }));
+
+    const fileNameLower = file.name.toLowerCase();
+    const isHeic =
+      fileNameLower.endsWith('.heic') ||
+      fileNameLower.endsWith('.heif') ||
+      file.type === 'image/heic' ||
+      file.type === 'image/heif';
+
+    try {
+      if (isHeic) {
+        setPendingPhotoProcessing(true);
+        const mod: any = await import('heic2any');
+        const heic2any: any = mod?.default || mod;
+        const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+        const blob = Array.isArray(converted) ? converted[0] : converted;
+        if (!(blob instanceof Blob)) {
+          throw new Error('Не удалось конвертировать HEIC.');
+        }
+        const jpgFile = new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), {
+          type: 'image/jpeg',
+        });
+        setPendingPhotoFile(jpgFile);
+        setPendingPhotoPreviewUrl(URL.createObjectURL(jpgFile));
+        setPendingPhotoProcessing(false);
+        return;
+      }
+
+      setPendingPhotoFile(file);
+      setPendingPhotoPreviewUrl(URL.createObjectURL(file));
+    } catch (err: any) {
+      const msg = err?.message || 'Не удалось обработать файл.';
+      setPendingPhotoError(String(msg));
+      setPendingPhotoProcessing(false);
+      setPendingPhotoFile(null);
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const pendingAndRejectedApps = useMemo(() => {
@@ -1243,11 +1314,34 @@ const ApplicationList = () => {
                         <input
                           type='file'
                           hidden
-                          accept='image/*'
-                          onChange={handleEditPhotoUpload}
+                          accept='image/*,.heic,.heif'
+                          onChange={handleEditPhotoSelect}
                         />
                       </Button>
-                      {editForm.photo_url ? (
+                      {pendingPhotoError ? (
+                        <Typography color='error' variant='body2' sx={{ mt: 1 }}>
+                          {pendingPhotoError}
+                        </Typography>
+                      ) : null}
+                      {pendingPhotoProcessing ? (
+                        <Typography color='text.secondary' variant='body2' sx={{ mt: 1 }}>
+                          Конвертация HEIC...
+                        </Typography>
+                      ) : null}
+                      {pendingPhotoFile ? (
+                        <Typography color='text.secondary' variant='body2' sx={{ mt: 1 }}>
+                          Файл выбран и будет загружен при сохранении профиля.
+                        </Typography>
+                      ) : null}
+                      {pendingPhotoPreviewUrl ? (
+                        <Box mt={1}>
+                          <img
+                            src={pendingPhotoPreviewUrl}
+                            alt='Фото 3x4'
+                            style={{ width: '100%', maxHeight: '240px', objectFit: 'contain' }}
+                          />
+                        </Box>
+                      ) : editForm.photo_url ? (
                         <Box mt={1}>
                           <img
                             src={
