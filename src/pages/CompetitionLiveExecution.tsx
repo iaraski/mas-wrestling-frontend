@@ -283,8 +283,6 @@ export default function CompetitionLiveExecution() {
           filter: `competition_id=eq.${compId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
-          queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
           scheduleLiveRefetch();
           scheduleResultsRefetch();
         },
@@ -298,8 +296,6 @@ export default function CompetitionLiveExecution() {
           filter: `competition_id=eq.${compId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
-          queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
           scheduleLiveRefetch();
           scheduleResultsRefetch();
         },
@@ -313,8 +309,7 @@ export default function CompetitionLiveExecution() {
           filter: `competition_id=eq.${compId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
-          queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
+          scheduleLiveRefetch();
           scheduleResultsRefetch();
         },
       )
@@ -427,9 +422,7 @@ export default function CompetitionLiveExecution() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
-      scheduleLiveRefetch();
     },
-  });
 
   const downloadCategoryCsv = async (categoryId: string, label: string) => {
     if (!compId) return;
@@ -481,7 +474,6 @@ export default function CompetitionLiveExecution() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
-      scheduleLiveRefetch();
     },
     onError: (err: any) => {
       const msg =
@@ -504,7 +496,6 @@ export default function CompetitionLiveExecution() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
-      scheduleLiveRefetch();
     },
     onError: (err: any) => {
       const msg =
@@ -519,7 +510,6 @@ export default function CompetitionLiveExecution() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
-      scheduleLiveRefetch();
     },
     onError: (err: any) => {
       const msg =
@@ -534,7 +524,6 @@ export default function CompetitionLiveExecution() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
-      scheduleLiveRefetch();
     },
     onError: (err: any) => {
       const detail = err?.response?.data?.detail || err?.response?.data?.message || '';
@@ -552,7 +541,6 @@ export default function CompetitionLiveExecution() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
-      scheduleLiveRefetch();
     },
     onError: (err: any) => {
       const msg =
