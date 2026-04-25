@@ -155,7 +155,7 @@ export default function CompetitionLiveExecution() {
   const queryClient = useQueryClient();
   const [forceLiveView, setForceLiveView] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
-  const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
+  const [selectedDayIndex, setSelectedDayIndex] = useState<number>(1);
   const [currentMat, setCurrentMat] = useState(1);
   const [expandedRoundKeys, setExpandedRoundKeys] = useState<Record<string, boolean>>({});
   const [expandedCategoryKeys, setExpandedCategoryKeys] = useState<Record<string, boolean>>({});
@@ -178,18 +178,14 @@ export default function CompetitionLiveExecution() {
     typeof w === 'number' && Number.isFinite(w) ? w.toFixed(2).replace(/\.?0+$/, '') : '—';
 
   const liveStateQueryKey = useMemo(
-    () => ['live_state', compId, selectedDayIndex || null] as const,
+    () => ['live_state', compId, selectedDayIndex] as const,
     [compId, selectedDayIndex],
   );
 
   const liveQuery = useQuery<LiveState>({
     queryKey: liveStateQueryKey,
-    queryFn: () =>
-      liveService.getLiveState(
-        compId!,
-        selectedDayIndex ? { day_index: selectedDayIndex } : undefined,
-      ),
-    enabled: !!compId,
+    queryFn: () => liveService.getLiveState(compId!, { day_index: selectedDayIndex }),
+    enabled: !!compId && selectedDayIndex > 0,
     refetchOnWindowFocus: false,
   });
 
@@ -574,17 +570,12 @@ export default function CompetitionLiveExecution() {
   }, [currentMat, matsCount]);
 
   useEffect(() => {
-    if (selectedDayIndex) return;
-    const idx = liveQuery.data?.competition?.selected_day_index;
-    if (idx && idx > 0) {
-      setSelectedDayIndex(idx);
-      return;
+    const idx = Number(selectedDayIndex || 1);
+    if (days.length <= 0) return;
+    if (idx < 1 || idx > days.length) {
+      setSelectedDayIndex(1);
     }
-    if (days.length === 0) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const pos = days.indexOf(today);
-    setSelectedDayIndex(pos >= 0 ? pos + 1 : 1);
-  }, [days, liveQuery.data?.competition?.selected_day_index, selectedDayIndex]);
+  }, [days, selectedDayIndex]);
 
   useEffect(() => {
     setGenerateMatsEnabled((prev) => {
