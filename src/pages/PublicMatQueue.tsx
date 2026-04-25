@@ -1,10 +1,13 @@
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   AppBar,
   Box,
   Card,
   CardContent,
   CircularProgress,
-  Container,
   Tab,
   Tabs,
   Typography,
@@ -13,7 +16,7 @@ import {
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { liveService } from '../services/api';
 
 type LiveBout = {
@@ -128,6 +131,105 @@ function MatOverview({
     }
     return parts.filter(Boolean).join(' • ');
   };
+  const isByeBout = (bout: LiveBout) => {
+    const s = String(bout.stage || '').toLowerCase();
+    return (s === 'bye' || s.startsWith('bye')) && bout.athlete_red_name === bout.athlete_blue_name;
+  };
+  const stageGroupRank = (bout: LiveBout) => {
+    if (bout.bracket_type !== 'double_elim') return 0;
+    const s = String(bout.stage || '').toLowerCase();
+    if (s.startsWith('lb') || s.startsWith('bye_lb')) return 0;
+    if (s === 'wb' || s.startsWith('bye_wb') || s === 'bye') return 1;
+    if (s.startsWith('final') || s === 'semifinal') return 2;
+    return 3;
+  };
+
+  const baseCategoryOrder = useMemo(() => {
+    const fromLeft = (mat.categories || []).map((c) => c.id).filter((x) => x);
+    if (fromLeft.length) return fromLeft;
+    const active = (mat.queue || []).filter(
+      (b) => b.status !== 'cancelled' && b.status !== 'done' && !isByeBout(b),
+    );
+    if (active.length === 0) return [];
+    const minRound = Math.min(...active.map((b) => Number(b.round_index || 0)));
+    const firstRound = active
+      .filter((b) => Number(b.round_index || 0) === minRound)
+      .sort(
+        (a, b) =>
+          (a.order_in_mat || 0) - (b.order_in_mat || 0) ||
+          String(a.id || '').localeCompare(String(b.id || '')),
+      );
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const b of firstRound) {
+      const cid = String(b.category_id || '');
+      if (!cid || seen.has(cid)) continue;
+      seen.add(cid);
+      out.push(cid);
+    }
+    return out;
+  }, [mat.categories, mat.queue]);
+
+  const queueRounds = useMemo(() => {
+    const activeRoundGroupKeys = new Set<string>();
+    for (const b of mat.queue || []) {
+      if (!b || b.status === 'cancelled' || b.status === 'done') continue;
+      if (isByeBout(b)) continue;
+      if (!b.category_id) continue;
+      activeRoundGroupKeys.add(`${b.category_id}:${b.round_index || 0}:${stageGroupRank(b)}`);
+    }
+
+    const queue = (mat.queue || []).filter((b) => {
+      if (!b) return false;
+      if (b.status === 'cancelled') return false;
+      if (b.status !== 'done') return true;
+      if (!isByeBout(b)) return false;
+      if (!b.category_id) return false;
+      const k = `${b.category_id}:${b.round_index || 0}:${stageGroupRank(b)}`;
+      return activeRoundGroupKeys.has(k);
+    });
+
+    const sorted = [...queue].sort((a, b) => {
+      const ra = a.round_index || 0;
+      const rb = b.round_index || 0;
+      if (ra !== rb) return ra - rb;
+      const ga = stageGroupRank(a);
+      const gb = stageGroupRank(b);
+      if (ga !== gb) return ga - gb;
+      const ba = isByeBout(a) ? 1 : 0;
+      const bb = isByeBout(b) ? 1 : 0;
+      if (ba !== bb) return ba - bb;
+      return (a.order_in_mat || 0) - (b.order_in_mat || 0);
+    });
+
+    const rounds = new Map<number, LiveBout[]>();
+    for (const b of sorted) {
+      const r = Number(b.round_index || 0);
+      if (r <= 0) continue;
+      rounds.set(r, [...(rounds.get(r) || []), b]);
+    }
+    return Array.from(rounds.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([round, bouts]) => {
+        const byCat = new Map<string, LiveBout[]>();
+        for (const b of bouts) {
+          byCat.set(b.category_id, [...(byCat.get(b.category_id) || []), b]);
+        }
+        const preferred = baseCategoryOrder.length
+          ? baseCategoryOrder
+          : (mat.categories || []).map((c) => c.id);
+        const unknownCats = Array.from(byCat.keys()).filter((cid) => !preferred.includes(cid));
+        const cats = [...preferred.filter((cid) => byCat.has(cid)), ...unknownCats];
+        return {
+          round,
+          categories: cats.map((cid) => ({
+            categoryId: cid,
+            label: categoryLabelMap.get(cid) || `Категория ${cid.slice(0, 6)}`,
+            bouts: byCat.get(cid) || [],
+          })),
+        };
+      });
+  }, [mat.queue, mat.categories, baseCategoryOrder, categoryLabelMap]);
 
   return (
     <Card>
@@ -173,21 +275,43 @@ function MatOverview({
             <Typography sx={{ fontWeight: 700 }} gutterBottom>
               Очередь
             </Typography>
-            {mat.queue.length === 0 ? (
+            {queueRounds.length === 0 ? (
               <Typography color='text.secondary'>Очередь пустая.</Typography>
             ) : (
-              <Box display='grid' gap={1.5}>
-                {[...mat.queue]
-                  .sort((a, b) => (a.order_in_mat || 0) - (b.order_in_mat || 0))
-                  .slice(0, 10)
-                  .map((b, idx) => (
-                    <Box key={b.id}>
-                      <Typography variant='body2' color='text.secondary'>
-                        #{idx + 1}
-                      </Typography>
-                      <BoutLine bout={b} context={getBoutContext(b)} />
-                    </Box>
-                  ))}
+              <Box>
+                {queueRounds.map((r, rIdx) => (
+                  <Accordion
+                    key={`r-${r.round}`}
+                    defaultExpanded={rIdx === 0}
+                    disableGutters
+                    sx={{ mb: 1 }}
+                  >
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Typography sx={{ fontWeight: 700 }}>Круг {r.round}</Typography>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      {r.categories.map((c, cIdx) => (
+                        <Accordion
+                          key={`r-${r.round}-c-${c.categoryId}`}
+                          defaultExpanded={rIdx === 0 && cIdx < 2}
+                          disableGutters
+                          sx={{ mb: 1, borderLeft: '3px solid #e0e0e0', pl: 1 }}
+                        >
+                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                            <Typography>{c.label}</Typography>
+                          </AccordionSummary>
+                          <AccordionDetails>
+                            <Box display='grid' gap={1.25}>
+                              {c.bouts.map((b) => (
+                                <BoutLine key={b.id} bout={b} context={getBoutContext(b)} />
+                              ))}
+                            </Box>
+                          </AccordionDetails>
+                        </Accordion>
+                      ))}
+                    </AccordionDetails>
+                  </Accordion>
+                ))}
               </Box>
             )}
           </Box>
@@ -199,13 +323,20 @@ function MatOverview({
 
 export default function PublicMatQueue() {
   const { compId } = useParams<{ compId: string }>();
+  const [searchParams] = useSearchParams();
   const [currentMat, setCurrentMat] = useState(1);
   const theme = useTheme();
   const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
 
   const liveQuery = useQuery<LiveState>({
-    queryKey: ['public_live_state', compId],
-    queryFn: () => liveService.getLiveState(compId!),
+    queryKey: ['public_live_state', compId, searchParams.get('day') || null],
+    queryFn: () => {
+      const day = Number(searchParams.get('day') || 0);
+      return liveService.getLiveState(
+        compId!,
+        Number.isFinite(day) && day > 0 ? { day_index: day } : undefined,
+      );
+    },
     enabled: !!compId,
     staleTime: 15_000,
     refetchInterval: 15_000,
@@ -266,16 +397,16 @@ export default function PublicMatQueue() {
 
   if (liveQuery.isError) {
     return (
-      <Container maxWidth='md' sx={{ mt: 4 }}>
+      <Box sx={{ mt: 4, px: 2 }}>
         <Typography color='error'>Не удалось загрузить очередь.</Typography>
-      </Container>
+      </Box>
     );
   }
 
   return (
     <Box>
       <AppBar position='sticky' color='default' elevation={1}>
-        <Box sx={{ px: 2, py: 1 }}>
+        <Box sx={{ px: { xs: 1, md: 1.5 }, py: 1 }}>
           <Typography sx={{ fontWeight: 700 }}>{competitionName}</Typography>
           {selectedDay ? (
             <Typography variant='body2' color='text.secondary'>
@@ -297,17 +428,20 @@ export default function PublicMatQueue() {
         </Box>
       </AppBar>
 
-      <Container maxWidth={isLargeScreen ? 'xl' : 'md'} sx={{ mt: 3, mb: 5 }}>
+      <Box sx={{ mt: 1, mb: 2, px: { xs: 0.25, md: 0.5 }, width: '100%' }}>
         {mats.length === 0 ? (
           <Typography>Нет данных.</Typography>
         ) : isLargeScreen ? (
           <Box
             display='grid'
-            gap={2}
+            gap={1}
             sx={{
               gridTemplateColumns:
-                matsCount >= 3 ? 'repeat(3, minmax(0, 1fr))' : `repeat(${matsCount}, minmax(0, 1fr))`,
+                matsCount >= 3
+                  ? 'repeat(3, minmax(0, 1fr))'
+                  : `repeat(${matsCount}, minmax(0, 1fr))`,
               alignItems: 'start',
+              width: '100%',
             }}
           >
             {mats
@@ -379,7 +513,7 @@ export default function PublicMatQueue() {
             </Card>
           </Box>
         )}
-      </Container>
+      </Box>
     </Box>
   );
 }

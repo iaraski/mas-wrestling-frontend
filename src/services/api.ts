@@ -413,6 +413,12 @@ export const liveService = {
     });
     return response.data;
   },
+  reorderMatCategories: async (competitionId: string, matNumber: number, categoryIds: string[]) => {
+    const response = await api.post(`/live/competitions/${competitionId}/mats/${matNumber}/categories/reorder`, {
+      category_ids: categoryIds,
+    });
+    return response.data;
+  },
   stopCompetition: async (competitionId: string, clearAssignments = true) => {
     const response = await api.post(`/live/competitions/${competitionId}/stop`, {
       clear_assignments: clearAssignments,

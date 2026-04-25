@@ -1,4 +1,6 @@
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import DownloadIcon from '@mui/icons-material/Download';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
@@ -74,14 +76,6 @@ type LiveBout = {
 type LiveMat = {
   mat_number: number;
   categories: Array<{ id: string; label: string; day?: string | null }>;
-  notices?: Array<{
-    kind: 'finals_moved';
-    category_id: string;
-    label: string;
-    to_mat: number;
-    athlete_red_name: string;
-    athlete_blue_name: string;
-  }>;
   current_bout: LiveBout | null;
   next_bout: LiveBout | null;
   queue: LiveBout[];
@@ -183,8 +177,13 @@ export default function CompetitionLiveExecution() {
   const formatWeight = (w?: number | null) =>
     typeof w === 'number' && Number.isFinite(w) ? w.toFixed(2).replace(/\.?0+$/, '') : '—';
 
+  const liveStateQueryKey = useMemo(
+    () => ['live_state', compId, selectedDayIndex || null] as const,
+    [compId, selectedDayIndex],
+  );
+
   const liveQuery = useQuery<LiveState>({
-    queryKey: ['live_state', compId, selectedDayIndex || null],
+    queryKey: liveStateQueryKey,
     queryFn: () =>
       liveService.getLiveState(
         compId!,
@@ -269,10 +268,10 @@ export default function CompetitionLiveExecution() {
       window.clearTimeout(liveRefetchTimerRef.current);
     }
     liveRefetchTimerRef.current = window.setTimeout(() => {
-      queryClient.refetchQueries({ queryKey: ['live_state', compId] });
+      queryClient.refetchQueries({ queryKey: liveStateQueryKey });
       liveRefetchTimerRef.current = null;
     }, 450);
-  }, [compId, queryClient]);
+  }, [compId, queryClient, liveStateQueryKey]);
 
   useEffect(() => {
     if (!compId) return;
@@ -288,7 +287,7 @@ export default function CompetitionLiveExecution() {
           filter: `competition_id=eq.${compId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+          queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
           queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
           scheduleLiveRefetch();
           scheduleResultsRefetch();
@@ -303,7 +302,7 @@ export default function CompetitionLiveExecution() {
           filter: `competition_id=eq.${compId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+          queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
           queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
           scheduleLiveRefetch();
           scheduleResultsRefetch();
@@ -318,7 +317,7 @@ export default function CompetitionLiveExecution() {
           filter: `competition_id=eq.${compId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+          queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
           queryClient.invalidateQueries({ queryKey: ['competition_results', compId] });
           scheduleResultsRefetch();
         },
@@ -336,7 +335,14 @@ export default function CompetitionLiveExecution() {
       }
       supabase.removeChannel(channel);
     };
-  }, [compId, queryClient, scheduleLiveRefetch, scheduleResultsRefetch, showResultsView]);
+  }, [
+    compId,
+    queryClient,
+    scheduleLiveRefetch,
+    scheduleResultsRefetch,
+    showResultsView,
+    liveStateQueryKey,
+  ]);
 
   const generateMutation = useMutation({
     mutationFn: async (): Promise<GenerateLiveResponse> => {
@@ -351,7 +357,7 @@ export default function CompetitionLiveExecution() {
       });
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
       setGenerateOpen(false);
       if (!data?.bouts_created) {
         setActionError(
@@ -373,7 +379,7 @@ export default function CompetitionLiveExecution() {
       return liveService.moveCategory(compId!, categoryId, toMat);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
     },
     onError: (err: any) => {
       const msg =
@@ -381,6 +387,51 @@ export default function CompetitionLiveExecution() {
         err?.response?.data?.message ||
         'Не удалось переместить категорию.';
       setActionError(String(msg));
+    },
+  });
+
+  const reorderMatCategoriesMutation = useMutation({
+    mutationFn: async ({
+      matNumber,
+      categoryIds,
+    }: {
+      matNumber: number;
+      categoryIds: string[];
+    }) => {
+      return liveService.reorderMatCategories(compId!, matNumber, categoryIds);
+    },
+    onMutate: async ({ matNumber, categoryIds }) => {
+      await queryClient.cancelQueries({ queryKey: liveStateQueryKey });
+      const previous = queryClient.getQueryData<LiveState>(liveStateQueryKey);
+      if (!previous) return { previous };
+
+      const next: LiveState = {
+        ...previous,
+        mats: previous.mats.map((m) => {
+          if (m.mat_number !== matNumber) return m;
+          const byId = new Map(m.categories.map((c) => [c.id, c] as const));
+          const ordered = categoryIds
+            .map((id) => byId.get(id))
+            .filter(Boolean) as LiveMat['categories'];
+          const rest = m.categories.filter((c) => !categoryIds.includes(c.id));
+          return { ...m, categories: [...ordered, ...rest] };
+        }),
+      };
+
+      queryClient.setQueryData(liveStateQueryKey, next);
+      return { previous };
+    },
+    onError: (err: any, _vars, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(liveStateQueryKey, ctx.previous);
+      const msg =
+        err?.response?.data?.detail ||
+        err?.response?.data?.message ||
+        'Не удалось изменить порядок категорий.';
+      setActionError(String(msg));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
+      scheduleLiveRefetch();
     },
   });
 
@@ -413,7 +464,7 @@ export default function CompetitionLiveExecution() {
       return liveService.withdrawAthlete(compId!, athleteId, reason);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
       scheduleLiveRefetch();
       setWithdrawOpen(false);
       setWithdrawAthleteId(null);
@@ -433,7 +484,7 @@ export default function CompetitionLiveExecution() {
       return liveService.startBout(boutId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
       scheduleLiveRefetch();
     },
     onError: (err: any) => {
@@ -456,7 +507,7 @@ export default function CompetitionLiveExecution() {
       return liveService.finishBout(boutId, winnerAthleteId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
       scheduleLiveRefetch();
     },
     onError: (err: any) => {
@@ -471,7 +522,7 @@ export default function CompetitionLiveExecution() {
       return liveService.cancelBout(boutId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
       scheduleLiveRefetch();
     },
     onError: (err: any) => {
@@ -486,7 +537,7 @@ export default function CompetitionLiveExecution() {
       return liveService.rollbackMat(compId!, currentMat, toBoutId, lastCount ?? 1);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
       scheduleLiveRefetch();
     },
     onError: (err: any) => {
@@ -504,7 +555,7 @@ export default function CompetitionLiveExecution() {
       return liveService.stopCompetition(compId!, true);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['live_state', compId] });
+      queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
       scheduleLiveRefetch();
     },
     onError: (err: any) => {
@@ -559,7 +610,7 @@ export default function CompetitionLiveExecution() {
     const tb = bout.athlete_blue_team || '';
     const aLabel = ta ? `${a} (${ta})` : `${a}`;
     const bLabel = tb ? `${b} (${tb})` : `${b}`;
-    if (isByeBout(bout)) return `${a}`;
+    if (isByeBout(bout)) return `${aLabel}`;
     return `${aLabel} vs ${bLabel}`;
   };
 
@@ -600,9 +651,6 @@ export default function CompetitionLiveExecution() {
 
   const queueRounds = useMemo(() => {
     if (!currentMatState) return [];
-    const queue = currentMatState.queue.filter(
-      (b) => b.status !== 'cancelled' && (b.status !== 'done' || isByeBout(b)),
-    );
     const groupRank = (bout: LiveBout) => {
       if (bout.bracket_type !== 'double_elim') return 0;
       const s = String(bout.stage || '').toLowerCase();
@@ -611,6 +659,24 @@ export default function CompetitionLiveExecution() {
       if (s.startsWith('final') || s === 'semifinal') return 2;
       return 3;
     };
+
+    const activeRoundGroupKeys = new Set<string>();
+    for (const b of currentMatState.queue || []) {
+      if (!b || b.status === 'cancelled' || b.status === 'done') continue;
+      if (isByeBout(b)) continue;
+      if (!b.category_id) continue;
+      activeRoundGroupKeys.add(`${b.category_id}:${b.round_index || 0}:${groupRank(b)}`);
+    }
+
+    const queue = (currentMatState.queue || []).filter((b) => {
+      if (!b) return false;
+      if (b.status === 'cancelled') return false;
+      if (b.status !== 'done') return true;
+      if (!isByeBout(b)) return false;
+      if (!b.category_id) return false;
+      const k = `${b.category_id}:${b.round_index || 0}:${groupRank(b)}`;
+      return activeRoundGroupKeys.has(k);
+    });
     const sorted = [...queue].sort((a, b) => {
       const ra = a.round_index || 0;
       const rb = b.round_index || 0;
@@ -641,6 +707,33 @@ export default function CompetitionLiveExecution() {
     }
 
     return Array.from(roundMap.values()).sort((a, b) => a.order - b.order);
+  }, [currentMatState]);
+
+  const baseCategoryOrder = useMemo(() => {
+    const fromLeft = (currentMatState?.categories || []).map((c) => c.id).filter((x) => x);
+    if (fromLeft.length) return fromLeft;
+    if (!currentMatState) return [];
+    const active = (currentMatState.queue || []).filter(
+      (b) => b.status !== 'cancelled' && b.status !== 'done' && !isByeBout(b),
+    );
+    if (active.length === 0) return [];
+    const minRound = Math.min(...active.map((b) => Number(b.round_index || 0)));
+    const firstRound = active
+      .filter((b) => Number(b.round_index || 0) === minRound)
+      .sort(
+        (a, b) =>
+          (a.order_in_mat || 0) - (b.order_in_mat || 0) ||
+          String(a.id || '').localeCompare(String(b.id || '')),
+      );
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const b of firstRound) {
+      const cid = String(b.category_id || '');
+      if (!cid || seen.has(cid)) continue;
+      seen.add(cid);
+      out.push(cid);
+    }
+    return out;
   }, [currentMatState]);
 
   const categoryOrderForBouts = (bouts: LiveBout[]) => {
@@ -1084,6 +1177,56 @@ export default function CompetitionLiveExecution() {
                 currentMatState.categories.map((c, idx) => (
                   <Box key={c.id}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Tooltip title='Выше'>
+                        <span>
+                          <IconButton
+                            size='small'
+                            onClick={() => {
+                              const nextCats = [...currentMatState.categories];
+                              const t = nextCats[idx - 1];
+                              nextCats[idx - 1] = nextCats[idx];
+                              nextCats[idx] = t;
+                              reorderMatCategoriesMutation.mutate({
+                                matNumber: currentMat,
+                                categoryIds: nextCats.map((x) => x.id),
+                              });
+                            }}
+                            disabled={
+                              !hasBouts ||
+                              idx === 0 ||
+                              reorderMatCategoriesMutation.isPending ||
+                              moveCategoryMutation.isPending
+                            }
+                          >
+                            <ArrowUpwardIcon fontSize='small' />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title='Ниже'>
+                        <span>
+                          <IconButton
+                            size='small'
+                            onClick={() => {
+                              const nextCats = [...currentMatState.categories];
+                              const t = nextCats[idx + 1];
+                              nextCats[idx + 1] = nextCats[idx];
+                              nextCats[idx] = t;
+                              reorderMatCategoriesMutation.mutate({
+                                matNumber: currentMat,
+                                categoryIds: nextCats.map((x) => x.id),
+                              });
+                            }}
+                            disabled={
+                              !hasBouts ||
+                              idx >= currentMatState.categories.length - 1 ||
+                              reorderMatCategoriesMutation.isPending ||
+                              moveCategoryMutation.isPending
+                            }
+                          >
+                            <ArrowDownwardIcon fontSize='small' />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                       <Typography sx={{ flex: 1 }}>{c.label}</Typography>
                       <Tooltip title='Выгрузить CSV'>
                         <IconButton
@@ -1104,6 +1247,9 @@ export default function CompetitionLiveExecution() {
                               categoryId: c.id,
                               toMat: Number(e.target.value),
                             })
+                          }
+                          disabled={
+                            moveCategoryMutation.isPending || reorderMatCategoriesMutation.isPending
                           }
                         >
                           {Array.from({ length: matsCount }, (_, i) => i + 1).map((m) => (
@@ -1128,17 +1274,6 @@ export default function CompetitionLiveExecution() {
               <Typography variant='h6' gutterBottom>
                 Сейчас / Следующий
               </Typography>
-
-              {currentMatState.notices && currentMatState.notices.length > 0 ? (
-                <Box mb={2} display='flex' flexDirection='column' gap={1}>
-                  {currentMatState.notices.map((n, idx) => (
-                    <Alert key={`${n.kind}-${idx}`} severity='info'>
-                      Финал категории «{n.label}» перенесён на помост {n.to_mat}:{' '}
-                      {n.athlete_red_name} vs {n.athlete_blue_name}
-                    </Alert>
-                  ))}
-                </Box>
-              ) : null}
 
               {currentMatState.current_bout ? (
                 <Card sx={{ mb: 2, borderLeft: '4px solid #4caf50' }}>
@@ -1301,15 +1436,33 @@ export default function CompetitionLiveExecution() {
                 <Box>
                   {queueRounds.slice(0, 5).map((r, rIdx) => {
                     const catMap = new Map<string, LiveBout[]>();
-                    const catOrder: string[] = [];
                     for (const b of r.bouts) {
                       const cat = b.category_id;
                       if (!catMap.has(cat)) {
                         catMap.set(cat, []);
-                        catOrder.push(cat);
                       }
                       catMap.get(cat)!.push(b);
                     }
+
+                    const preferred = baseCategoryOrder.length
+                      ? baseCategoryOrder
+                      : (currentMatState?.categories || []).map((c) => c.id);
+                    const unknownCats = Array.from(catMap.keys()).filter(
+                      (cid) => !preferred.includes(cid),
+                    );
+                    const catOrder = [
+                      ...preferred.filter((cid) => catMap.has(cid)),
+                      ...unknownCats,
+                    ];
+
+                    const stageGroupRank = (bout: LiveBout) => {
+                      if (bout.bracket_type !== 'double_elim') return 1;
+                      const s = String(bout.stage || '').toLowerCase();
+                      if (s.startsWith('lb') || s.startsWith('bye_lb')) return 0;
+                      if (s === 'wb' || s.startsWith('bye_wb') || s === 'bye') return 1;
+                      if (s.startsWith('final') || s === 'semifinal') return 2;
+                      return 3;
+                    };
 
                     const roundExpanded = expandedRoundKeys[r.key] ?? rIdx === 0;
 
@@ -1330,7 +1483,15 @@ export default function CompetitionLiveExecution() {
                           {catOrder.map((catId, catIdx) => {
                             const catLabel =
                               categoryLabelMap.get(catId) || `Категория ${catId.slice(0, 6)}`;
-                            const bouts = (catMap.get(catId) || []).slice(0, 20);
+                            const bouts = [...(catMap.get(catId) || [])]
+                              .sort(
+                                (a, b) =>
+                                  stageGroupRank(a) - stageGroupRank(b) ||
+                                  (isByeBout(a) ? 1 : 0) - (isByeBout(b) ? 1 : 0) ||
+                                  (a.order_in_mat || 0) - (b.order_in_mat || 0) ||
+                                  String(a.id || '').localeCompare(String(b.id || '')),
+                              )
+                              .slice(0, 20);
                             const catKey = `${r.key}:${catId}`;
                             const alwaysOpen = rIdx === 0 && catIdx < 2;
                             const catExpanded = expandedCategoryKeys[catKey] ?? alwaysOpen;
@@ -1364,7 +1525,8 @@ export default function CompetitionLiveExecution() {
                                       grpLabel = 'Группа Б';
                                     else if (grp.startsWith('final') || grp === 'semifinal')
                                       grpLabel = 'Финалы';
-                                    if (b.is_final) grpLabel = grpLabel ? `${grpLabel} • Финал` : 'Финал';
+                                    if (b.is_final)
+                                      grpLabel = grpLabel ? `${grpLabel} • Финал` : 'Финал';
                                     if (b.is_tiebreak)
                                       grpLabel = grpLabel ? `${grpLabel} • Стыковой` : 'Стыковой';
 
