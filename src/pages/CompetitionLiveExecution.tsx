@@ -423,6 +423,7 @@ export default function CompetitionLiveExecution() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
     },
+  });
 
   const downloadCategoryCsv = async (categoryId: string, label: string) => {
     if (!compId) return;
