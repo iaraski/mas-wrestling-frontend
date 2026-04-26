@@ -413,9 +413,15 @@ export const liveService = {
     });
     return response.data;
   },
-  reorderMatCategories: async (competitionId: string, matNumber: number, categoryIds: string[]) => {
+  reorderMatCategories: async (
+    competitionId: string,
+    matNumber: number,
+    categoryIds: string[],
+    opts?: { day_index?: number | null },
+  ) => {
     const response = await api.post(`/live/competitions/${competitionId}/mats/${matNumber}/categories/reorder`, {
       category_ids: categoryIds,
+      day_index: opts?.day_index ?? undefined,
     });
     return response.data;
   },

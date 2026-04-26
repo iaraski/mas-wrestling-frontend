@@ -1,7 +1,6 @@
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import DownloadIcon from '@mui/icons-material/Download';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
   Accordion,
@@ -157,6 +156,10 @@ export default function CompetitionLiveExecution() {
   const [resultsOpen, setResultsOpen] = useState(false);
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(1);
   const [currentMat, setCurrentMat] = useState(1);
+  const [draftScopeKey, setDraftScopeKey] = useState<string>('');
+  const [draftCategoryIds, setDraftCategoryIds] = useState<string[]>([]);
+  const [isDraftDirty, setIsDraftDirty] = useState(false);
+  const [draggingCategoryId, setDraggingCategoryId] = useState<string | null>(null);
   const [expandedRoundKeys, setExpandedRoundKeys] = useState<Record<string, boolean>>({});
   const [expandedCategoryKeys, setExpandedCategoryKeys] = useState<Record<string, boolean>>({});
   const [actionError, setActionError] = useState<string | null>(null);
@@ -385,11 +388,15 @@ export default function CompetitionLiveExecution() {
     mutationFn: async ({
       matNumber,
       categoryIds,
+      dayIndex,
     }: {
       matNumber: number;
       categoryIds: string[];
+      dayIndex?: number | null;
     }) => {
-      return liveService.reorderMatCategories(compId!, matNumber, categoryIds);
+      return liveService.reorderMatCategories(compId!, matNumber, categoryIds, {
+        day_index: dayIndex ?? undefined,
+      });
     },
     onMutate: async ({ matNumber, categoryIds }) => {
       await queryClient.cancelQueries({ queryKey: liveStateQueryKey });
@@ -421,6 +428,8 @@ export default function CompetitionLiveExecution() {
       setActionError(String(msg));
     },
     onSuccess: () => {
+      setIsDraftDirty(false);
+      setDraggingCategoryId(null);
       queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
     },
   });
@@ -513,8 +522,11 @@ export default function CompetitionLiveExecution() {
       queryClient.invalidateQueries({ queryKey: liveStateQueryKey });
     },
     onError: (err: any) => {
+      const detail = err?.response?.data?.detail || err?.response?.data?.message || '';
       const msg =
-        err?.response?.data?.detail || err?.response?.data?.message || 'Не удалось сбросить бой.';
+        detail === 'Completed bout reset is disabled. Use rollback for completed bouts.'
+          ? 'Сброс завершённого поединка отключён. Для завершённых используйте кнопку «Откатить».'
+          : detail || 'Не удалось сбросить бой.';
       setActionError(String(msg));
     },
   });
@@ -531,7 +543,9 @@ export default function CompetitionLiveExecution() {
       const msg =
         detail === 'Stop the running bout before rollback'
           ? 'Сначала сбросьте текущий поединок (кнопка «Сбросить» или завершите бой), затем повторите откат.'
-          : detail || 'Не удалось откатить поединки.';
+          : detail === 'Completed bout reset is disabled. Use rollback for completed bouts.'
+            ? 'Сброс завершённого поединка отключён. Используйте «Откатить».'
+            : detail || 'Не удалось откатить поединки.';
       setActionError(String(msg));
     },
   });
@@ -577,6 +591,55 @@ export default function CompetitionLiveExecution() {
     () => mats.find((m) => m.mat_number === currentMat) || null,
     [mats, currentMat],
   );
+  const matScopeKey = `${selectedDayIndex || 0}:${currentMat}`;
+  const currentMatCategoryIds = useMemo(
+    () => (currentMatState?.categories || []).map((c) => c.id).filter((x) => x),
+    [currentMatState?.categories],
+  );
+
+  useEffect(() => {
+    if (!currentMatState) {
+      setDraftCategoryIds([]);
+      setIsDraftDirty(false);
+      setDraftScopeKey(matScopeKey);
+      return;
+    }
+    if (draftScopeKey !== matScopeKey) {
+      setDraftCategoryIds(currentMatCategoryIds);
+      setIsDraftDirty(false);
+      setDraggingCategoryId(null);
+      setDraftScopeKey(matScopeKey);
+      return;
+    }
+    if (!isDraftDirty) {
+      setDraftCategoryIds(currentMatCategoryIds);
+    }
+  }, [currentMatState, currentMatCategoryIds, draftScopeKey, isDraftDirty, matScopeKey]);
+
+  const orderedCategoriesForPanel = useMemo(() => {
+    if (!currentMatState) return [];
+    const byId = new Map(currentMatState.categories.map((c) => [c.id, c] as const));
+    const ordered = draftCategoryIds
+      .map((id) => byId.get(id))
+      .filter(Boolean) as LiveMat['categories'];
+    const rest = currentMatState.categories.filter((c) => !draftCategoryIds.includes(c.id));
+    return [...ordered, ...rest];
+  }, [currentMatState, draftCategoryIds]);
+
+  const moveDraftCategory = useCallback((draggedId: string, targetId: string) => {
+    if (!draggedId || !targetId || draggedId === targetId) return;
+    setDraftCategoryIds((prev) => {
+      const from = prev.indexOf(draggedId);
+      const to = prev.indexOf(targetId);
+      if (from < 0 || to < 0 || from === to) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setIsDraftDirty(true);
+  }, []);
+
   const hasRunningBout = Boolean(currentMatState?.current_bout?.status === 'running');
 
   const isByeBout = (bout: LiveBout) =>
@@ -616,7 +679,7 @@ export default function CompetitionLiveExecution() {
     const parts = [catLabel, `Круг ${bout.round_index}`];
     if (bout.bracket_type === 'double_elim') {
       if (bout.is_final) parts.push('Финал');
-      if (bout.is_tiebreak) parts.push('Стыковой');
+      if (bout.is_tiebreak) parts.push('Стыковой (между 3-ми местами)');
       const s = (bout.stage || '').toLowerCase();
       if (s === 'wb' || s.startsWith('bye_wb') || s === 'bye') {
         parts.push('Группа А');
@@ -653,9 +716,7 @@ export default function CompetitionLiveExecution() {
       if (b.status === 'cancelled') return false;
       if (b.status !== 'done') return true;
       if (!isByeBout(b)) return false;
-      if (!b.category_id) return false;
-      const k = `${b.category_id}:${b.round_index || 0}:${groupRank(b)}`;
-      return activeRoundGroupKeys.has(k);
+      return true;
     });
     const sorted = [...queue].sort((a, b) => {
       const ra = a.round_index || 0;
@@ -1151,100 +1212,127 @@ export default function CompetitionLiveExecution() {
               <Typography variant='h6' gutterBottom>
                 Категории на помосте
               </Typography>
-              {currentMatState.categories.length === 0 ? (
+              {orderedCategoriesForPanel.length === 0 ? (
                 <Typography color='textSecondary'>Пока не назначены.</Typography>
               ) : (
-                currentMatState.categories.map((c, idx) => (
-                  <Box key={c.id}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Tooltip title='Выше'>
-                        <span>
-                          <IconButton
-                            size='small'
-                            onClick={() => {
-                              const nextCats = [...currentMatState.categories];
-                              const t = nextCats[idx - 1];
-                              nextCats[idx - 1] = nextCats[idx];
-                              nextCats[idx] = t;
-                              reorderMatCategoriesMutation.mutate({
-                                matNumber: currentMat,
-                                categoryIds: nextCats.map((x) => x.id),
-                              });
-                            }}
-                            disabled={
-                              !hasBouts ||
-                              idx === 0 ||
-                              reorderMatCategoriesMutation.isPending ||
-                              moveCategoryMutation.isPending
-                            }
-                          >
-                            <ArrowUpwardIcon fontSize='small' />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                      <Tooltip title='Ниже'>
-                        <span>
-                          <IconButton
-                            size='small'
-                            onClick={() => {
-                              const nextCats = [...currentMatState.categories];
-                              const t = nextCats[idx + 1];
-                              nextCats[idx + 1] = nextCats[idx];
-                              nextCats[idx] = t;
-                              reorderMatCategoriesMutation.mutate({
-                                matNumber: currentMat,
-                                categoryIds: nextCats.map((x) => x.id),
-                              });
-                            }}
-                            disabled={
-                              !hasBouts ||
-                              idx >= currentMatState.categories.length - 1 ||
-                              reorderMatCategoriesMutation.isPending ||
-                              moveCategoryMutation.isPending
-                            }
-                          >
-                            <ArrowDownwardIcon fontSize='small' />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                      <Typography sx={{ flex: 1 }}>{c.label}</Typography>
-                      <Tooltip title='Выгрузить CSV'>
-                        <IconButton
-                          size='small'
-                          onClick={() => downloadCategoryCsv(c.id, c.label)}
-                          disabled={!hasBouts}
-                        >
-                          <DownloadIcon fontSize='small' />
-                        </IconButton>
-                      </Tooltip>
-                      <FormControl size='small' sx={{ minWidth: 120 }}>
-                        <InputLabel>Помост</InputLabel>
-                        <Select
-                          value={currentMat}
-                          label='Помост'
-                          onChange={(e) =>
-                            moveCategoryMutation.mutate({
-                              categoryId: c.id,
-                              toMat: Number(e.target.value),
-                            })
-                          }
-                          disabled={
-                            moveCategoryMutation.isPending || reorderMatCategoriesMutation.isPending
-                          }
-                        >
-                          {Array.from({ length: matsCount }, (_, i) => i + 1).map((m) => (
-                            <MenuItem key={m} value={m}>
-                              {m}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </Box>
-                    {idx < currentMatState.categories.length - 1 ? (
-                      <Divider sx={{ my: 1 }} />
-                    ) : null}
+                <>
+                  <Box display='flex' gap={1} mb={1.5}>
+                    <Button
+                      size='small'
+                      variant='contained'
+                      onClick={() =>
+                        reorderMatCategoriesMutation.mutate({
+                          matNumber: currentMat,
+                          categoryIds: draftCategoryIds,
+                          dayIndex: selectedDayIndex || null,
+                        })
+                      }
+                      disabled={
+                        !hasBouts ||
+                        !isDraftDirty ||
+                        reorderMatCategoriesMutation.isPending ||
+                        moveCategoryMutation.isPending
+                      }
+                    >
+                      {reorderMatCategoriesMutation.isPending
+                        ? 'Сохранение...'
+                        : 'Сохранить порядок'}
+                    </Button>
+                    <Button
+                      size='small'
+                      variant='outlined'
+                      onClick={() => {
+                        setDraftCategoryIds(currentMatCategoryIds);
+                        setIsDraftDirty(false);
+                        setDraggingCategoryId(null);
+                      }}
+                      disabled={
+                        !isDraftDirty ||
+                        reorderMatCategoriesMutation.isPending ||
+                        moveCategoryMutation.isPending
+                      }
+                    >
+                      Сбросить
+                    </Button>
                   </Box>
-                ))
+                  {orderedCategoriesForPanel.map((c, idx) => (
+                    <Box key={c.id}>
+                      <Box
+                        draggable={
+                          hasBouts &&
+                          !reorderMatCategoriesMutation.isPending &&
+                          !moveCategoryMutation.isPending
+                        }
+                        onDragStart={(e) => {
+                          setDraggingCategoryId(c.id);
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', c.id);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (!draggingCategoryId || draggingCategoryId === c.id) return;
+                          moveDraftCategory(draggingCategoryId, c.id);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setDraggingCategoryId(null);
+                        }}
+                        onDragEnd={() => setDraggingCategoryId(null)}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          borderRadius: 1,
+                          px: 0.5,
+                          py: 0.25,
+                          bgcolor: draggingCategoryId === c.id ? 'action.hover' : 'transparent',
+                        }}
+                      >
+                        <DragIndicatorIcon
+                          fontSize='small'
+                          color='disabled'
+                          sx={{ cursor: hasBouts ? 'grab' : 'default' }}
+                        />
+                        <Typography sx={{ flex: 1 }}>{c.label}</Typography>
+                        <Tooltip title='Выгрузить CSV'>
+                          <IconButton
+                            size='small'
+                            onClick={() => downloadCategoryCsv(c.id, c.label)}
+                            disabled={!hasBouts}
+                          >
+                            <DownloadIcon fontSize='small' />
+                          </IconButton>
+                        </Tooltip>
+                        <FormControl size='small' sx={{ minWidth: 120 }}>
+                          <InputLabel>Помост</InputLabel>
+                          <Select
+                            value={currentMat}
+                            label='Помост'
+                            onChange={(e) =>
+                              moveCategoryMutation.mutate({
+                                categoryId: c.id,
+                                toMat: Number(e.target.value),
+                              })
+                            }
+                            disabled={
+                              moveCategoryMutation.isPending ||
+                              reorderMatCategoriesMutation.isPending
+                            }
+                          >
+                            {Array.from({ length: matsCount }, (_, i) => i + 1).map((m) => (
+                              <MenuItem key={m} value={m}>
+                                {m}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Box>
+                      {idx < orderedCategoriesForPanel.length - 1 ? (
+                        <Divider sx={{ my: 1 }} />
+                      ) : null}
+                    </Box>
+                  ))}
+                </>
               )}
             </Paper>
           </Grid>
@@ -1508,7 +1596,9 @@ export default function CompetitionLiveExecution() {
                                     if (b.is_final)
                                       grpLabel = grpLabel ? `${grpLabel} • Финал` : 'Финал';
                                     if (b.is_tiebreak)
-                                      grpLabel = grpLabel ? `${grpLabel} • Стыковой` : 'Стыковой';
+                                      grpLabel = grpLabel
+                                        ? `${grpLabel} • Стыковой (между 3-ми местами)`
+                                        : 'Стыковой (между 3-ми местами)';
 
                                     return (
                                       <Box
@@ -1612,11 +1702,11 @@ export default function CompetitionLiveExecution() {
                             color='warning'
                             onClick={() => {
                               const ok = window.confirm(
-                                'Сбросить этот поединок? Результаты будут очищены, связанные последующие поединки будут пересчитаны.',
+                                'Откатить этот поединок и все результаты после него? Связанные последующие поединки будут пересчитаны.',
                               );
-                              if (ok) cancelMutation.mutate(b.id);
+                              if (ok) rollbackMutation.mutate({ toBoutId: b.id });
                             }}
-                            disabled={cancelMutation.isPending || hasRunningBout}
+                            disabled={rollbackMutation.isPending || hasRunningBout}
                           >
                             Откатить
                           </Button>

@@ -23,6 +23,8 @@ type LiveBout = {
   id: string;
   category_id: string;
   bracket_type?: 'round_robin' | 'double_elim';
+  athlete_red_id?: string;
+  athlete_blue_id?: string;
   athlete_red_name?: string;
   athlete_blue_name?: string;
   athlete_red_team?: string;
@@ -119,7 +121,7 @@ function MatOverview({
     const parts = [catLabel, `Круг ${bout.round_index}`];
     if (bout.bracket_type === 'double_elim') {
       if (bout.is_final) parts.push('Финал');
-      if (bout.is_tiebreak) parts.push('Стыковой');
+      if (bout.is_tiebreak) parts.push('Стыковой (между 3-ми местами)');
       const s = (bout.stage || '').toLowerCase();
       if (s === 'wb' || s.startsWith('bye_wb') || s === 'bye') {
         parts.push('Группа А');
@@ -133,7 +135,10 @@ function MatOverview({
   };
   const isByeBout = (bout: LiveBout) => {
     const s = String(bout.stage || '').toLowerCase();
-    return (s === 'bye' || s.startsWith('bye')) && bout.athlete_red_name === bout.athlete_blue_name;
+    return (
+      (s === 'bye' || s.startsWith('bye')) &&
+      String(bout.athlete_red_id || '') === String(bout.athlete_blue_id || '')
+    );
   };
   const stageGroupRank = (bout: LiveBout) => {
     if (bout.bracket_type !== 'double_elim') return 0;
@@ -184,9 +189,7 @@ function MatOverview({
       if (b.status === 'cancelled') return false;
       if (b.status !== 'done') return true;
       if (!isByeBout(b)) return false;
-      if (!b.category_id) return false;
-      const k = `${b.category_id}:${b.round_index || 0}:${stageGroupRank(b)}`;
-      return activeRoundGroupKeys.has(k);
+      return true;
     });
 
     const sorted = [...queue].sort((a, b) => {
@@ -327,15 +330,13 @@ export default function PublicMatQueue() {
   const [currentMat, setCurrentMat] = useState(1);
   const theme = useTheme();
   const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
+  const requestedDay = Number(searchParams.get('day') || 2);
+  const dayIndex = Number.isFinite(requestedDay) && requestedDay > 0 ? requestedDay : 2;
 
   const liveQuery = useQuery<LiveState>({
-    queryKey: ['public_live_state', compId, searchParams.get('day') || null],
+    queryKey: ['public_live_state', compId, dayIndex],
     queryFn: () => {
-      const day = Number(searchParams.get('day') || 0);
-      return liveService.getLiveState(
-        compId!,
-        Number.isFinite(day) && day > 0 ? { day_index: day } : undefined,
-      );
+      return liveService.getLiveState(compId!, { day_index: dayIndex });
     },
     enabled: !!compId,
     staleTime: 15_000,
@@ -367,7 +368,7 @@ export default function PublicMatQueue() {
     const parts = [catLabel, `Круг ${bout.round_index}`];
     if (bout.bracket_type === 'double_elim') {
       if (bout.is_final) parts.push('Финал');
-      if (bout.is_tiebreak) parts.push('Стыковой');
+      if (bout.is_tiebreak) parts.push('Стыковой (между 3-ми местами)');
       const s = (bout.stage || '').toLowerCase();
       if (s === 'wb' || s.startsWith('bye_wb') || s === 'bye') {
         parts.push('Группа А');
